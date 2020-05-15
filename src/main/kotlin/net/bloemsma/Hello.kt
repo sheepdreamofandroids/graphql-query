@@ -3,14 +3,12 @@ package net.bloemsma
 import graphql.ExecutionInput
 import graphql.GraphQL
 import graphql.Scalars.*
+import graphql.language.Value
 import graphql.schema.*
 import graphql.schema.idl.RuntimeWiring
 import graphql.schema.idl.SchemaGenerator
 import graphql.schema.idl.SchemaParser
 import graphql.schema.idl.SchemaPrinter
-import graphql.util.TraversalControl
-import graphql.util.TraverserContext
-import graphql.util.TreeTransformerUtil
 import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.reflect.KClass
@@ -60,12 +58,18 @@ fun main() {
 //    println("=========================")
 //    println(schemaPrinter.print(transformedSchema))
 
-    val graphQL = GraphQL.newGraphQL(oldSchema).instrumentation(FilterInstrumentation(ops, "_filter")).build()
+    val graphQL = GraphQL.newGraphQL(oldSchema).instrumentation(
+        FilterInstrumentation(
+            ops, "_filter", SchemaPrinter(
+                SchemaPrinter.Options.defaultOptions().includeDirectives(false).includeIntrospectionTypes(false)
+            )
+        )
+    ).build()
     val executionResult = graphQL.execute(
         ExecutionInput.newExecutionInput(
             """
             {
-              myresult(_filter: {x: {eq: "x"}, y: {gt: 3}}) {
+              myresult(_filter: {x: {eq: "x"}, y: {gt: 3, lt: 9}}) {
                 ixxi: x
                 y
                 z {bar}
@@ -84,21 +88,36 @@ class OperatorRegistry(val operators: Iterable<Operator>) {
 
 interface Operator {
     fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType): Boolean
-    fun makeField(into: GraphQLInputObjectType.Builder)
+    fun makeField(
+        from: GraphQLOutputType,
+        into: GraphQLInputObjectType.Builder,
+        function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
+    )
+
+    fun compile(expr: Value<*>): (Any) -> Any
 }
 
-class SimpleOperator(
+class SimpleOperator<P, F, R : Any>(
     val name: String,
-    val resultClass: KClass<*>,
+    val resultClass: KClass<R>,
     val fieldType: GraphQLInputType,
-    val parameterType: GraphQLInputType
+    val parameterType: GraphQLInputType,
+    val body: (P, F) -> R
 ) : Operator {
     override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType): Boolean {
         return resultType == resultClass && fieldType == inputType
     }
 
-    override fun makeField(into: GraphQLInputObjectType.Builder) {
+    override fun makeField(
+        from: GraphQLOutputType,
+        into: GraphQLInputObjectType.Builder,
+        function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
+    ) {
         into.field { it.name(name).type(parameterType) }
+    }
+
+    override fun compile(parm: Value<*>): (Any) -> Any {
+        parm.namedChildren
     }
 }
 
@@ -125,163 +144,66 @@ val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
 )
 
 val ops = OperatorRegistry(
-    builtins.map { (resultType, parameterType) -> SimpleOperator("eq", Boolean::class, parameterType, parameterType) }
-            + builtins.map { (resultType, parameterType) ->
+    builtins.map { (_, i) ->
         SimpleOperator(
-            "gt",
+            "eq",
             Boolean::class,
-            parameterType,
-            parameterType
-        )
+            i,
+            i
+        ) { a: Any, b: Any ->
+            a === b || (a != null && b != null && a.equals(b))
+        }
     }
-            + builtins.map { (resultType, parameterType) ->
-        SimpleOperator(
-            "gte",
-            Boolean::class,
-            parameterType,
-            parameterType
-        )
+            + builtins.map { (_, i) ->
+        SimpleOperator("gt", Boolean::class, i, i) { a: Comparable<*>, b: Comparable<*> ->
+            a != null && b != null && a.compareTo(b) > 0
+        }
     }
-            + builtins.map { (resultType, parameterType) ->
-        SimpleOperator(
-            "lt",
-            Boolean::class,
-            parameterType,
-            parameterType
-        )
-    }
-            + builtins.map { (resultType, parameterType) ->
-        SimpleOperator(
-            "lte",
-            Boolean::class,
-            parameterType,
-            parameterType
-        )
-    }
+            + builtins.map { (_, i) -> SimpleOperator("gte", Boolean::class, i, i) }
+            + builtins.map { (_, i) -> SimpleOperator("lt", Boolean::class, i, i) }
+            + builtins.map { (_, i) -> SimpleOperator("lte", Boolean::class, i, i) }
+            + AndOfFields()
+            + AnyOfList()
 
 )
 
-fun <T : Any> KClass<T>.toGraphQlInput(): GraphQLScalarType =
-    builtins[this] ?: throw Exception("$this cannot be mapped to a GraphQLInputType")
+class AndOfFields : Operator {
+    override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType) =
+        resultType == Boolean::class && inputType is GraphQLObjectType
 
-
-class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
-    val functions: MutableSet<String> = mutableSetOf()
-
-    fun GraphQLOutputType.function(kClass: KClass<*>): GraphQLInputType {
-        val typeName = makeName()
-        val predicateName = "${typeName}__to__" + kClass.simpleName
-        return when {
-            functions.contains(typeName) -> GraphQLTypeReference.typeRef(predicateName)
-                .also { println("Refering to $predicateName") }
-            else -> {
-                functions.add(typeName)
-                println("Creating type $predicateName")
-                GraphQLInputObjectType.newInputObject()
-                    .name(predicateName)
-                    .also { query ->
-                        operators.operator(kClass, this).forEach { it.makeField(query) }
-                        when (this) {
-                            is GraphQLObjectType -> fieldDefinitions.forEach { field ->
-                                query.field {
-                                    it.name(field.name)
-                                    it.type(field.type.function(kClass))
-                                }
-                            }
-                            is GraphQLList -> {
-                                query.field { it.name("size").type(GraphQLInt.function(kClass)) }
-                                query.field {
-                                    wrappedType.testableType()?.run {
-                                        it.name("any").type(this.function(kClass))
-                                    }
-                                    it
-                                }
-                            }
-                            else -> {
-                            }
-                        }
-                        query.field {
-                            it.name("_OR")
-                            it.type(GraphQLList.list(function(kClass)))
-                        }
-                        query.field {
-                            it.name("_NOT")
-                            it.type(function(kClass))
-                        }
-                    }
-                    .build()
+    override fun makeField(
+        from: GraphQLOutputType,
+        query: GraphQLInputObjectType.Builder,
+        function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
+    ) {
+        (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
+            query.field {
+                it.name(field.name)
+                it.type(function(field.type, Boolean::class))
             }
-        }
-    }
 
-    override fun visitGraphQLFieldDefinition(
-        node: GraphQLFieldDefinition,
-        context: TraverserContext<GraphQLSchemaElement>
-    ): TraversalControl {
-        node.type.filterableType()?.let { listType: GraphQLList ->
-            listType.wrappedType.testableType()?.let { predicateType ->
-                if (!predicateType.isBuiltInReflection()) {
-                    println("modified $node")
-                    val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
-                        .argument {
-                            it.name("_filter")
-                            it.type(predicateType.function(Boolean::class))
-                        }
-                        // can't use a directive because it's declared globally and
-                        // therefore the argument type is the same everywhere
-                        .build()
-                    println("into $newNode")
-                    return TreeTransformerUtil.changeNode(context, newNode)
-                }
-            }
-        }
-        return super.visitGraphQLFieldDefinition(node, context)
-    }
-
-    fun GraphQLType.effectiveType(): GraphQLType = when (this) {
-        is GraphQLNonNull -> wrappedType.effectiveType()
-        else -> this
-    }
-
-    fun GraphQLType.testableType(): GraphQLOutputType? = when (this) {
-        is GraphQLNonNull -> wrappedType.testableType()
-        is GraphQLList -> this;
-        is GraphQLObjectType -> this
-        is GraphQLEnumType -> this
-        else -> null
-    }
-
-    fun GraphQLType.filterableType(): GraphQLList? = when (this) {
-        is GraphQLNonNull -> wrappedType.filterableType()
-        is GraphQLList -> this
-        else -> null
-    }
-
-    fun GraphQLType.isBuiltInReflection(): Boolean = when (this) {
-        is GraphQLObjectType -> name.startsWith("__")
-        is GraphQLEnumType -> name.startsWith("__")
-        else -> false
-    }
-
-    private fun GraphQLType.makeName(): String = when (this) {
-        is GraphQLObjectType -> name
-        is GraphQLEnumType -> name
-        is GraphQLScalarType -> name
-        is GraphQLList -> "_List_of_${wrappedType.makeName()}"
-        else -> "Cannot make name for $this"
-    }
-
-    private fun filterable(node: GraphQLFieldDefinition): Boolean {
-        val listType = node.type as? GraphQLList ?: return false
-        // The following skips all built-in reflection queries.
-        // Should the following just be hardcoded names?
-        val nonNullType = listType.wrappedType as? GraphQLNonNull ?: return true
-        return when (val objectType = nonNullType.wrappedType) {
-            is GraphQLObjectType -> !objectType.name.startsWith("__")
-            is GraphQLEnumType -> !objectType.name.startsWith("__")
-            else -> false
         }
     }
 }
+
+class AnyOfList : Operator {
+    override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType) =
+        resultType == Boolean::class && inputType is GraphQLList
+
+    override fun makeField(
+        from: GraphQLOutputType,
+        query: GraphQLInputObjectType.Builder,
+        function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
+    ) {
+        query.field {
+            (from as GraphQLList).wrappedType.testableType()?.run {
+                it.name("any").type(function(this, Boolean::class))
+            }
+        }
+    }
+}
+
+fun <T : Any> KClass<T>.toGraphQlInput(): GraphQLScalarType =
+    builtins[this] ?: throw Exception("$this cannot be mapped to a GraphQLInputType")
 
 

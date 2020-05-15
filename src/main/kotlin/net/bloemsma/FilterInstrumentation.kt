@@ -11,6 +11,7 @@ import graphql.schema.DataFetcher
 import graphql.schema.GraphQLSchema
 import graphql.schema.GraphQLType
 import graphql.schema.SchemaTransformer
+import graphql.schema.idl.SchemaPrinter
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
 import java.util.concurrent.CompletableFuture
@@ -22,8 +23,13 @@ typealias  Modifier = (Any) -> Unit
 typealias  Predicate = (Any) -> Boolean
 
 /** Adds filtering capabilities to GraphQL */
-class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) : SimpleInstrumentation() {
-    private val modifiers: ConcurrentMap<String, Modifier> = ConcurrentHashMap()
+class FilterInstrumentation(
+    val ops: OperatorRegistry,
+    val filterName: String,
+    val schemaPrinter: SchemaPrinter
+) : SimpleInstrumentation() {
+    // this could be an async loading cache, parsing the query while the data is being retrieved
+    private val query2modifier: ConcurrentMap<String, Modifier> = ConcurrentHashMap()
 
     class QueryToModifier(val ops: OperatorRegistry) : QueryReducer<QueryToModifier.Q2MState> {
 
@@ -42,12 +48,13 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
         val subTypes: MutableMap<String, TypeRegister> = mutableMapOf()
     }
 
+    /** Parses a query into a Modifier and stores it in query2modifier */
     override fun instrumentDocumentAndVariables(
         documentAndVariables: DocumentAndVariables,
         parameters: InstrumentationExecutionParameters
     ): DocumentAndVariables {
         val queryTraverser = QueryTraverser.newQueryTraverser()
-            .document(documentAndVariables.document)
+            .document(documentAndVariables.document) // document is the parsed query
             .schema(parameters.schema)
             .variables(documentAndVariables.variables)
             .build()
@@ -57,25 +64,26 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
             override fun visitField(env: QueryVisitorFieldEnvironment) {
                 val context = env.traverserContext
                 val fieldName = env.field.name
-                println("${context.phase}: $fieldName alias ${env.field.alias} of type ${env.fieldDefinition.type}")
+                val fieldType = env.fieldDefinition.type
+                println("${context.phase}: $fieldName alias ${env.field.alias} of type $fieldType")
                 val parentsTypeRegister: TypeRegister? = context.getVarFromParents(TypeRegister::class.java)
-                parentsTypeRegister?.types?.put(
-                    fieldName,
-                    env.fieldDefinition.type
-                )
+                parentsTypeRegister?.types?.put(fieldName, fieldType)
                 val filterArgument = env.field.arguments.firstOrNull { arg: Argument -> arg.name == filterName }
                 val hasFilter = filterArgument != null
                 // collecting types only makes sense for filters
                 when (context.phase) {
                     TraverserContext.Phase.ENTER -> {
-                        context.setVar(TypeRegister::class.java, TypeRegister(types = if (hasFilter) mutableMapOf() else null))
+                        context.setVar(
+                            TypeRegister::class.java,
+                            TypeRegister(types = if (hasFilter) mutableMapOf() else null)
+                        )
                     }
                     TraverserContext.Phase.LEAVE -> {
                         val typeRegister = context.getVar(TypeRegister::class.java)
                         val types = typeRegister.types
                         parentsTypeRegister?.subTypes?.put(fieldName, typeRegister)
                         if (filterArgument != null) {
-                            val modifier = filterArgument.toModifier(types)
+                            val modifier = filterArgument.toModifier(types!!)
                             println("Field $fieldName has filter, types are: $types, modifier is: $modifier")
                             (parentsTypeRegister?.toModify ?: toModify).put(fieldName, modifier)
                         }
@@ -92,20 +100,24 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
             }
         })
         println("To modify: $toModify")
-        modifiers.getOrPut(parameters.query) { parseDocument(documentAndVariables.document, parameters.schema) }
+        query2modifier.getOrPut(parameters.query) { parseDocument(documentAndVariables.document, parameters.schema) }
         return documentAndVariables
     }
 
 
+    private val analysis = AddQueryToSchema(ops)
+
+    /** Extends schema with filter parameters on lists. */
     override fun instrumentSchema(
         schema: GraphQLSchema?,
         parameters: InstrumentationExecutionParameters?
-    ): GraphQLSchema {
-        return SchemaTransformer.transformSchema(
+    ): GraphQLSchema = SchemaTransformer
+        .transformSchema(
             schema,
-            AddQueryToSchema(ops)
-        )
-    }
+            analysis
+        ).also {
+            println(schemaPrinter.print(it))
+        }
 
     override fun instrumentDataFetcher(
         dataFetcher: DataFetcher<*>,
@@ -122,7 +134,7 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
         executionResult: ExecutionResult,
         parameters: InstrumentationExecutionParameters
     ): CompletableFuture<ExecutionResult> {
-        modifiers.get(parameters.query)?.invoke(executionResult.getData())
+        query2modifier.get(parameters.query)?.invoke(executionResult.getData())
         return super.instrumentExecutionResult(executionResult, parameters)
     }
 
@@ -160,8 +172,8 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
             (selection as? Field)?.arguments?.find { it.name == filterName }?.toModifier(mapOf())
         }.let { { it } }
 
-    private fun Argument.toModifier(types: Map<String, GraphQLType>?): Modifier {
-        val test: Predicate = this.value.toPredicate()
+    private fun Argument.toModifier(types: Map<String, GraphQLType>): Modifier {
+        val test: Predicate = this.value.toPredicate(types)
 //        return object : Modifier {
 //            override fun invoke(data: Any) {
 //                val iterator = (data as? MutableIterable<Any>)?.iterator()
@@ -173,28 +185,29 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
 //            }
 //        }
 
-        return { data: Any ->
+        val modifier: (Any) -> Unit = { data: Any ->
             val iterator = (data as? MutableIterable<Any>)?.iterator()
             iterator?.forEach { if (!test(it)) iterator.remove() }
-        }.showingAs<Any, Unit> { """filter on: $test""" }
+        }
+        val showingAs = modifier.showingAs { "filter on: \n$test" }
+        println(showingAs)
+        return showingAs
     }
 
-    private fun Value<*>.toPredicate(): Predicate {
+    private fun Value<*>.toPredicate(types: Map<String, GraphQLType>): Predicate {
         val nothing: Predicate = when (this) {
-            is ObjectValue -> objectFields.mapNotNull { objectField -> objectField.toPredicate() }
+            is ObjectValue -> objectFields.mapNotNull { objectField -> objectField.toPredicate(types) }
                 .let { predicates ->
-                    val function: Predicate = { any: Any ->
-                        predicates.all { it.invoke(this) }
-                    }
-                    function
+                    { any: Any -> predicates.all { it.invoke(this) } }
+                        .showingAs { "    ${predicates.joinToString(separator = "\nAND ")}\n" }
                 }
             else -> throw Exception("Not a predate at $sourceLocation")
         }
         return nothing
     }
 
-    private fun ObjectField.toPredicate(): Predicate {
-        ops.operators.find { it.canProduce(Boolean::class, this.) }
+    private fun ObjectField.toPredicate(types: Map<String, GraphQLType>): Predicate {
+//        ops.operators.find { it.canProduce(Boolean::class, this.) }
         return { data -> true }
     }
 
@@ -204,7 +217,9 @@ class FilterInstrumentation(val ops: OperatorRegistry, val filterName: String) :
 
 }
 
-fun <I, O> ((I) -> O).showingAs(body: () -> String): (I) -> O = object : ((I) -> O) {
-    override fun invoke(i: I): O = this(i)
-    override fun toString(): String = body()
+fun <I, O> ((I) -> O).showingAs(body: () -> String): (I) -> O = let {
+    object : ((I) -> O) {
+        override fun invoke(i: I): O = it(i)
+        override fun toString(): String = body()
+    }
 }
