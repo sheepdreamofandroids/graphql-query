@@ -8,7 +8,6 @@ import graphql.util.TraverserContext
 import graphql.util.TreeTransformerUtil
 import kotlin.reflect.KClass
 
-typealias FilterParser = (Value<*>) -> Modifier
 
 class FunctionInfo(data: GraphQLOutputType, kClass: KClass<*>,val qlInputObjectType) {
     val typeName = data.makeName()

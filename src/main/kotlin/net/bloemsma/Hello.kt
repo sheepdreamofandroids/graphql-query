@@ -121,12 +121,13 @@ class SimpleOperator<P, F, R : Any>(
     }
 }
 
-inline fun <reified O, reified F : Any, reified I : Any> operator(name: String, body: (F, I) -> O): Operator =
+inline fun <reified O:Any, reified F : Any, reified I : Any> operator(name: String, noinline body: (F, I) -> O): Operator =
     SimpleOperator(
         name = name,
         resultClass = O::class,
         fieldType = F::class.toGraphQlInput(),
-        parameterType = I::class.toGraphQlInput()
+        parameterType = I::class.toGraphQlInput(),
+        body = body
     )
 
 val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(

@@ -19,8 +19,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 
 // modifying the query result is destructive
-typealias  Modifier = (Any) -> Unit
+typealias  ResultModifier = (Any) -> Unit
 typealias  Predicate = (Any) -> Boolean
+// calculates a modifier from a query
+typealias FilterParser = (Value<*>) -> ResultModifier
 
 /** Adds filtering capabilities to GraphQL */
 class FilterInstrumentation(
@@ -29,7 +31,7 @@ class FilterInstrumentation(
     val schemaPrinter: SchemaPrinter
 ) : SimpleInstrumentation() {
     // this could be an async loading cache, parsing the query while the data is being retrieved
-    private val query2modifier: ConcurrentMap<String, Modifier> = ConcurrentHashMap()
+    private val query2ResultModifier: ConcurrentMap<String, ResultModifier> = ConcurrentHashMap()
 
     class QueryToModifier(val ops: OperatorRegistry) : QueryReducer<QueryToModifier.Q2MState> {
 
@@ -44,7 +46,7 @@ class FilterInstrumentation(
     }
 
     class TypeRegister(val types: MutableMap<String, GraphQLType>?) {
-        val toModify: MutableMap<String, Modifier> = mutableMapOf()
+        val toModify: MutableMap<String, ResultModifier> = mutableMapOf()
         val subTypes: MutableMap<String, TypeRegister> = mutableMapOf()
     }
 
@@ -59,7 +61,7 @@ class FilterInstrumentation(
             .variables(documentAndVariables.variables)
             .build()
 //        queryTraverser.reducePostOrder(QueryToModifier(ops), QueryToModifier.Q2MState(1, emptyMap()))
-        val toModify: MutableMap<String, Modifier> = mutableMapOf()
+        val toModify: MutableMap<String, ResultModifier> = mutableMapOf()
         if (true) queryTraverser.visitDepthFirst(object : QueryVisitorStub() {
             override fun visitField(env: QueryVisitorFieldEnvironment) {
                 val context = env.traverserContext
@@ -100,7 +102,7 @@ class FilterInstrumentation(
             }
         })
         println("To modify: $toModify")
-        query2modifier.getOrPut(parameters.query) { parseDocument(documentAndVariables.document, parameters.schema) }
+        query2ResultModifier.getOrPut(parameters.query) { parseDocument(documentAndVariables.document, parameters.schema) }
         return documentAndVariables
     }
 
@@ -134,12 +136,12 @@ class FilterInstrumentation(
         executionResult: ExecutionResult,
         parameters: InstrumentationExecutionParameters
     ): CompletableFuture<ExecutionResult> {
-        query2modifier.get(parameters.query)?.invoke(executionResult.getData())
+        query2ResultModifier.get(parameters.query)?.invoke(executionResult.getData())
         return super.instrumentExecutionResult(executionResult, parameters)
     }
 
 
-    private fun parseDocument(document: Document, schema: GraphQLSchema): Modifier {
+    private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier {
 
 
         val mapNotNull: List<Pair<String, (Any) -> Unit>> = document.definitions.mapNotNull { definition ->
@@ -167,12 +169,12 @@ class FilterInstrumentation(
     }
 
 
-    private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): Modifier? =
+    private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): ResultModifier? =
         getSelectionSet().selections.mapNotNull { selection ->
             (selection as? Field)?.arguments?.find { it.name == filterName }?.toModifier(mapOf())
         }.let { { it } }
 
-    private fun Argument.toModifier(types: Map<String, GraphQLType>): Modifier {
+    private fun Argument.toModifier(types: Map<String, GraphQLType>): ResultModifier {
         val test: Predicate = this.value.toPredicate(types)
 //        return object : Modifier {
 //            override fun invoke(data: Any) {
