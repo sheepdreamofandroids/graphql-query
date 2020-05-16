@@ -1,7 +1,5 @@
 package net.bloemsma
 
-import graphql.Scalars
-import graphql.language.Value
 import graphql.schema.*
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
@@ -9,10 +7,27 @@ import graphql.util.TreeTransformerUtil
 import kotlin.reflect.KClass
 
 
-class FunctionInfo(data: GraphQLOutputType, kClass: KClass<*>,val qlInputObjectType) {
-    val typeName = data.makeName()
-    val predicateName = "${typeName}__to__" + kClass.simpleName
+class FunctionInfo(
+    contextQlType: GraphQLOutputType,
+    resultClass: KClass<*>,
+    operators: OperatorRegistry,
+    function: (GraphQLOutputType, KClass<*>) -> GraphQLInputType
+) {
+    val typeName = contextQlType.makeName()
+    val predicateName = "${typeName}__to__" + resultClass.simpleName
     val ref = GraphQLTypeReference.typeRef(predicateName)
+    val parmQlType: GraphQLInputType by lazy {
+        GraphQLInputObjectType.newInputObject().apply {
+            name(predicateName)
+            operators
+                .applicableTo(resultClass, contextQlType)
+                .forEach {
+                    it.makeField(contextQlType, this, function)
+                }
+        }
+            .build()
+
+    }
 }
 
 class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
@@ -20,50 +35,58 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
     val parsers: MutableMap<String, FilterParser> = mutableMapOf()
 
 
-    fun GraphQLOutputType.function(kClass: KClass<*>): GraphQLInputType {
+    fun GraphQLOutputType.function(kClass: KClass<*>): FunctionInfo {
         val typeName = makeName()
-//        val predicateName = "${typeName}__to__" + kClass.simpleName
-        val functionInfo = FunctionInfo(this, kClass)
+        val predicateName = "${typeName}__to__" + kClass.simpleName
+//        val functionInfo = FunctionInfo(this, kClass)
         return functions.computeIfAbsent(typeName) { typeName ->
 //                    functions.add(typeName)
 //                    println("Creating type $predicateName")
             //                val x: FilterParser = ops.map { it.makeParser }
-            val qlInputObjectType = GraphQLInputObjectType.newInputObject()
-                .name(predicateName)
-                .also { query ->
-                    operators.operator(kClass, this).forEach { it.makeField(this, query) { a, b -> a.function(b) } }
-                    when (this) {
-//                            is GraphQLObjectType -> fieldDefinitions.forEach { field ->
-//                                query.field {
-//                                    it.name(field.name)
-//                                    it.type(field.type.function(kClass))
-//                                }
+//            val qlInputObjectType = GraphQLInputObjectType.newInputObject()
+//                .name(predicateName)
+//                .also { query ->
+//                    operators
+//                        .applicableTo(kClass, this)
+//                        .forEach {
+//                            it.makeField(this, query) { a, b ->
+//                                a.function(b).parmQlType
 //                            }
-                        is GraphQLList -> {
-                            query.field { it.name("size").type(Scalars.GraphQLInt.function(kClass)) }
-//                                query.field {
-//                                    wrappedType.testableType()?.run {
-//                                        it.name("any").type(this.function(kClass))
-//                                    }
-//                                    it
-//                                }
-                        }
-                        else -> {
-                        }
-                    }
-                    query.field {
-                        it.name("_OR")
-                        it.type(GraphQLList.list(function(kClass)))
-                    }
-                    query.field {
-                        it.name("_NOT")
-                        it.type(function(kClass))
-                    }
-                }
-                .build()
-            qlInputObjectType
-            FunctionInfo(this,kClass,qlInputObjectType)
-        }.ref
+//                        }
+////                    when (this) {
+////                            is GraphQLObjectType -> fieldDefinitions.forEach { field ->
+////                                query.field {
+////                                    it.name(field.name)
+////                                    it.type(field.type.function(kClass))
+////                                }
+////                            }
+////                        is GraphQLList -> {
+////                            query.field { it.name("size").type(Scalars.GraphQLInt.function(kClass)) }
+////                                query.field {
+////                                    wrappedType.testableType()?.run {
+////                                        it.name("any").type(this.function(kClass))
+////                                    }
+////                                    it
+////                                }
+////                        }
+////                        else -> {
+////                        }
+////                }
+////                    query.field {
+////                        it.name("_OR")
+////                        it.type(GraphQLList.list(function(kClass).parmQlType))
+////                    }
+////                    query.field {
+////                        it.name("_NOT")
+////                        it.type(function(kClass))
+////                    }
+//                }
+//                .build()
+
+            FunctionInfo(this, kClass, operators, { a: GraphQLOutputType, b: KClass<*> ->
+                a.function(b).parmQlType
+            })
+        }
     }
 
     override fun visitGraphQLFieldDefinition(
@@ -77,7 +100,7 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
                     val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
                         .argument {
                             it.name("_filter")
-                            it.type(predicateType.function(Boolean::class))
+                            it.type(predicateType.function(Boolean::class).parmQlType)
                         }
                         // can't use a directive because it's declared globally and
                         // therefore the argument type is the same everywhere
@@ -91,6 +114,7 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
     }
 
 }
+
 private fun GraphQLType.makeName(): String = when (this) {
     is GraphQLObjectType -> name
     is GraphQLEnumType -> name
