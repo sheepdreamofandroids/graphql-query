@@ -102,7 +102,9 @@ class FilterInstrumentation(
             }
         })
         println("To modify: $toModify")
-        query2ResultModifier.getOrPut(parameters.query) { parseDocument(documentAndVariables.document, parameters.schema) }
+        query2ResultModifier.getOrPut(parameters.query) {
+            parseDocument(documentAndVariables.document, parameters.schema)
+        }
         return documentAndVariables
     }
 
@@ -113,13 +115,8 @@ class FilterInstrumentation(
     override fun instrumentSchema(
         schema: GraphQLSchema?,
         parameters: InstrumentationExecutionParameters?
-    ): GraphQLSchema = SchemaTransformer
-        .transformSchema(
-            schema,
-            analysis
-        ).also {
-            println(schemaPrinter.print(it))
-        }
+    ): GraphQLSchema = SchemaTransformer.transformSchema(schema, analysis)
+        .also { println(schemaPrinter.print(it)) }
 
     override fun instrumentDataFetcher(
         dataFetcher: DataFetcher<*>,

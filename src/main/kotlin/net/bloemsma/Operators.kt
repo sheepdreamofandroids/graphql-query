@@ -29,6 +29,7 @@ class SimpleOperator<P, F, R : Any>(
     val resultClass: KClass<R>,
     val fieldType: GraphQLInputType,
     val parameterType: GraphQLInputType,
+    val description: String? = null,
     val body: (P, F) -> R
 ) : Operator {
     override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType): Boolean {
@@ -40,13 +41,22 @@ class SimpleOperator<P, F, R : Any>(
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
     ) {
-        into.field { it.name(name).type(parameterType) }
+        into.addField {
+            name(name).type(parameterType)
+            description?.run { description(this) }
+        }
     }
+}
 
 //    override fun compile(parm: Value<*>): (Any) -> Any {
 //        parm.namedChildren
 //    }
-}
+
+
+fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit) =
+    field { it.apply(block) }
+fun GraphQLInputObjectType.Builder.addField(block: GraphQLInputObjectField.Builder.() -> Unit) =
+    field { it.apply(block) }
 
 inline fun <reified O : Any, reified F : Any, reified I : Any> operator(
     name: String,

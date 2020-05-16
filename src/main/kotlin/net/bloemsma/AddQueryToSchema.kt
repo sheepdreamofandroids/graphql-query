@@ -6,15 +6,29 @@ import graphql.util.TraverserContext
 import graphql.util.TreeTransformerUtil
 import kotlin.reflect.KClass
 
+// Some terminology:
+// Every operator in the graphQL-query language operates on some "current" data in the graphQL-result and some data
+// from the input object in the graphQL-query. That current data is called the context and the input object is the
+// parameter.
+// For example a filter "(_filter: {a: {eq: 3}, b: {gt: 5})" has an outer operator {_filter ...} whose context is
+// a list of objects, the operator will will remove some entries from the list.
+// The sub-operator{a: ..., b: ...} which is effectively an AND over it's sub-operators; it's context is some object
+// which is expected to have numerical fields called 'a' and 'b'.
+// Finally {eq: 3} and {gt: 5} are operators in a numerical context with literal parameters.
 
-class FunctionInfo(
+class FilterFunction(
+    /** The context in which this function will operate, i.e. the type of data in the result to be transformed.*/
     contextQlType: GraphQLOutputType,
+    /** The result of this operator when executing, for example Boolean when in a filter.
+     * But it could be something other, like an Integer for an add operator.*/
     resultClass: KClass<*>,
+    /** All available operators in the system.*/
     operators: OperatorRegistry,
+    /** Something that can resolve nested operators. */
     function: (GraphQLOutputType, KClass<*>) -> GraphQLInputType
 ) {
-    val typeName = contextQlType.makeName()
-    val predicateName = "${typeName}__to__" + resultClass.simpleName
+    private val predicateName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
+
     val ref = GraphQLTypeReference.typeRef(predicateName)
     val parmQlType: GraphQLInputType by lazy {
         GraphQLInputObjectType.newInputObject().apply {
@@ -31,60 +45,12 @@ class FunctionInfo(
 }
 
 class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
-    val functions: MutableMap<String, FunctionInfo> = mutableMapOf()
-    val parsers: MutableMap<String, FilterParser> = mutableMapOf()
+    val functions: MutableMap<String, FilterFunction> = mutableMapOf()
 
-
-    fun GraphQLOutputType.function(kClass: KClass<*>): FunctionInfo {
-        val typeName = makeName()
-        val predicateName = "${typeName}__to__" + kClass.simpleName
-//        val functionInfo = FunctionInfo(this, kClass)
-        return functions.computeIfAbsent(typeName) { typeName ->
-//                    functions.add(typeName)
-//                    println("Creating type $predicateName")
-            //                val x: FilterParser = ops.map { it.makeParser }
-//            val qlInputObjectType = GraphQLInputObjectType.newInputObject()
-//                .name(predicateName)
-//                .also { query ->
-//                    operators
-//                        .applicableTo(kClass, this)
-//                        .forEach {
-//                            it.makeField(this, query) { a, b ->
-//                                a.function(b).parmQlType
-//                            }
-//                        }
-////                    when (this) {
-////                            is GraphQLObjectType -> fieldDefinitions.forEach { field ->
-////                                query.field {
-////                                    it.name(field.name)
-////                                    it.type(field.type.function(kClass))
-////                                }
-////                            }
-////                        is GraphQLList -> {
-////                            query.field { it.name("size").type(Scalars.GraphQLInt.function(kClass)) }
-////                                query.field {
-////                                    wrappedType.testableType()?.run {
-////                                        it.name("any").type(this.function(kClass))
-////                                    }
-////                                    it
-////                                }
-////                        }
-////                        else -> {
-////                        }
-////                }
-////                    query.field {
-////                        it.name("_OR")
-////                        it.type(GraphQLList.list(function(kClass).parmQlType))
-////                    }
-////                    query.field {
-////                        it.name("_NOT")
-////                        it.type(function(kClass))
-////                    }
-//                }
-//                .build()
-
-            FunctionInfo(this, kClass, operators, { a: GraphQLOutputType, b: KClass<*> ->
-                a.function(b).parmQlType
+    fun functionFor(contextType: GraphQLOutputType, resultClass: KClass<*>): FilterFunction {
+        return functions.computeIfAbsent(contextType.makeName()) { _ ->
+            FilterFunction(contextType, resultClass, operators, { a: GraphQLOutputType, b: KClass<*> ->
+                functionFor(a, b).ref
             })
         }
     }
@@ -98,9 +64,20 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
                 if (!predicateType.isBuiltInReflection()) {
                     println("modified $node")
                     val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
-                        .argument {
-                            it.name("_filter")
-                            it.type(predicateType.function(Boolean::class).parmQlType)
+                        .argument { arg ->
+                            arg.name("_filter")
+                            val filterFunction = functionFor(predicateType, Boolean::class)
+                            // the following two lines add the type as an additional type to the schema
+                            // this is because otherwise only the reference is used everywhere
+                            val root = context.parentNodes.last()
+                            root.withNewChildren(root.childrenWithTypeReferences.transform {
+                                it.children(
+                                    "addTypes",
+                                    functions.values.map { it.parmQlType }
+                                )
+                            })
+                            println("Added type ${filterFunction.parmQlType}")
+                            arg.type(filterFunction.ref)
                         }
                         // can't use a directive because it's declared globally and
                         // therefore the argument type is the same everywhere
