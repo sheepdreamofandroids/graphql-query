@@ -23,24 +23,28 @@ class FilterFunction(
      * But it could be something other, like an Integer for an add operator.*/
     resultClass: KClass<*>,
     /** All available operators in the system.*/
-    operators: OperatorRegistry,
+    ops: OperatorRegistry,
     /** Something that can resolve nested operators. */
     function: (GraphQLOutputType, KClass<*>) -> GraphQLInputType
 ) {
-    private val predicateName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
+    private val signatureName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
 
-    val ref = GraphQLTypeReference.typeRef(predicateName)
+    val ref = GraphQLTypeReference.typeRef(signatureName)
+    val operators = ops.applicableTo(resultClass, contextQlType)
+
     val parmQlType: GraphQLInputType by lazy {
+        // lazy to avoid infinite recursion
         GraphQLInputObjectType.newInputObject().apply {
-            name(predicateName)
-            operators
-                .applicableTo(resultClass, contextQlType)
-                .forEach {
-                    it.makeField(contextQlType, this, function)
-                }
-        }
-            .build()
+            name(signatureName)
+            for (it in operators) {
+                it.makeField(contextQlType, this, function)
+            }
+        }.build()
 
+    }
+
+    override fun toString(): String {
+        return "Function for $signatureName"
     }
 }
 
@@ -68,14 +72,8 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
                             arg.name("_filter")
                             val filterFunction = functionFor(predicateType, Boolean::class)
                             // the following two lines add the type as an additional type to the schema
-                            // this is because otherwise only the reference is used everywhere
-                            val root = context.parentNodes.last()
-                            root.withNewChildren(root.childrenWithTypeReferences.transform {
-                                it.children(
-                                    "addTypes",
-                                    functions.values.map { it.parmQlType }
-                                )
-                            })
+                            // this is because everywhere only the reference is used
+                            context.addAdditionalTypes(functions.values.map { it.parmQlType })
                             println("Added type ${filterFunction.parmQlType}")
                             arg.type(filterFunction.ref)
                         }
@@ -88,6 +86,13 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
             }
         }
         return super.visitGraphQLFieldDefinition(node, context)
+    }
+
+    private fun TraverserContext<GraphQLSchemaElement>.addAdditionalTypes(additionalTypes: List<GraphQLInputType>) {
+        val root = parentNodes.last()
+        root.withNewChildren(root.childrenWithTypeReferences.transform {
+            it.children("addTypes", additionalTypes)
+        })
     }
 
 }

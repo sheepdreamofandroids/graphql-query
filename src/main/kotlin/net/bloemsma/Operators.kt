@@ -1,6 +1,7 @@
 package net.bloemsma
 
 import graphql.Scalars
+import graphql.language.Value
 import graphql.schema.*
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -13,7 +14,11 @@ class OperatorRegistry(val operators: Iterable<Operator>) {
         operators.filter { it.canProduce(resultType, context) }
 }
 
-interface Operator {
+typealias Variables = Map<String, *>
+typealias Result = Any
+typealias Query = Value<*>
+
+interface Operator<R : Any> {
     fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType): Boolean
     fun makeField(
         from: GraphQLOutputType,
@@ -21,19 +26,20 @@ interface Operator {
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
     )
 
+    val compile: (param: Query) -> (context: Result, variables: Variables) -> R
 //    fun compile(expr: Value<*>): (Any) -> Any
 }
 
-class SimpleOperator<P, F, R : Any>(
+class SimpleOperator<R : Any>(
     val name: String,
     val resultClass: KClass<R>,
-    val fieldType: GraphQLInputType,
+    val contextType: GraphQLOutputType,
     val parameterType: GraphQLInputType,
     val description: String? = null,
-    val body: (P, F) -> R
-) : Operator {
+    override val compile: (param: Query) -> (context: Result, variables: Variables) -> R
+) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType): Boolean {
-        return resultType == resultClass && fieldType == inputType
+        return resultType == resultClass && contextType == inputType
     }
 
     override fun makeField(
@@ -55,19 +61,24 @@ class SimpleOperator<P, F, R : Any>(
 
 fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit) =
     field { it.apply(block) }
+
 fun GraphQLInputObjectType.Builder.addField(block: GraphQLInputObjectField.Builder.() -> Unit) =
     field { it.apply(block) }
 
-inline fun <reified O : Any, reified F : Any, reified I : Any> operator(
+inline fun <reified R : Any, reified P : Any, reified C : Any> operator(
     name: String,
-    noinline body: (F, I) -> O
-): Operator =
+    noinline body: (context: C, parameter: P) -> R
+): Operator<R> =
     SimpleOperator(
         name = name,
-        resultClass = O::class,
-        fieldType = F::class.toGraphQlInput(),
-        parameterType = I::class.toGraphQlInput(),
-        body = body
+        resultClass = R::class,
+        contextType = C::class.toGraphQlOutput(),
+        parameterType = P::class.toGraphQlInput(),
+        compile = { param: Query ->k
+            val p: (Variables) -> P = param.extractor()
+
+            { c:Result,v:Variables -> body(c.extract(), p(v)) }
+        }
     )
 
 val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
@@ -128,28 +139,32 @@ val ops = OperatorRegistry(
         ) { a: Comparable<Any>, b: Comparable<Any> -> a != null && b != null && a.compareTo(b) <= 0 }
     }
             + AndOfFields()
-            + AnyOfList()
+            + AndOfFields.AnyOfList()
 //            + OrOfFields()
 
 )
 
-class AndOfFields : Operator {
+class AndOfFields : Operator<Any, Any, Boolean> {
     override fun canProduce(resultType: KClass<*>, inputType: GraphQLOutputType) =
         resultType == Boolean::class && inputType is GraphQLObjectType
 
     override fun makeField(
         from: GraphQLOutputType,
-        query: GraphQLInputObjectType.Builder,
+        into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
     ) {
-        query.description("This is true when all fields are true (AND).")
+        into.description("This is true when all fields are true (AND).")
         (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
-            query.field {
+            into.field {
                 it.name(field.name)
                 it.type(function(field.type, Boolean::class))
             }
 
         }
+    }
+
+    override val compile = { (context: Any, param: Value<*>) ->
+        O
     }
 }
 
@@ -184,6 +199,8 @@ class AnyOfList : Operator {
         }
     }
 }
+
+fun <T : Any> KClass<T>.toGraphQlOutput(): GraphQLScalarType = toGraphQlInput()
 
 fun <T : Any> KClass<T>.toGraphQlInput(): GraphQLScalarType =
     builtins[this]

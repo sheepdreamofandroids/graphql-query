@@ -85,6 +85,14 @@ class FilterInstrumentation(
                         val types = typeRegister.types
                         parentsTypeRegister?.subTypes?.put(fieldName, typeRegister)
                         if (filterArgument != null) {
+                            val test=analysis.functionFor(fieldType, Boolean::class).operators
+                            val modifier: (Any) -> Unit = { data: Any ->
+                                val iterator = (data as? MutableIterable<Any>)?.iterator()
+                                iterator?.forEach { if (!test(it)) iterator.remove() }
+                            }
+                            val showingAs = modifier.showingAs { "filter on: \n$test" }
+                            println(showingAs)
+                            return showingAs
                             val modifier = filterArgument.toModifier(types!!)
                             println("Field $fieldName has filter, types are: $types, modifier is: $modifier")
                             (parentsTypeRegister?.toModify ?: toModify).put(fieldName, modifier)
@@ -116,7 +124,9 @@ class FilterInstrumentation(
         schema: GraphQLSchema?,
         parameters: InstrumentationExecutionParameters?
     ): GraphQLSchema = SchemaTransformer.transformSchema(schema, analysis)
-        .also { println(schemaPrinter.print(it)) }
+        .also {
+            println("Found these functions: ${analysis.functions}")
+            println(schemaPrinter.print(it)) }
 
     override fun instrumentDataFetcher(
         dataFetcher: DataFetcher<*>,

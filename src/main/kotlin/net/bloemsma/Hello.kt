@@ -37,8 +37,8 @@ fun main() {
                 FieldCoordinates.coordinates("Query", "myresult"),
                 DataFetcher { _ ->
                     listOf(
-                        mapOf("x" to "y", "y" to 3, "z" to listOf(mapOf("bar" to 5))),
-                        mapOf("x" to "x", "y" to 5, "z" to listOf(mapOf("bar" to 6)))
+                        mapOf("x" to "wai", "y" to 3, "z" to listOf(mapOf("bar" to 5))),
+                        mapOf("x" to "iks", "y" to 5, "z" to listOf(mapOf("bar" to 6)))
                     )
                 })
         ).build()
