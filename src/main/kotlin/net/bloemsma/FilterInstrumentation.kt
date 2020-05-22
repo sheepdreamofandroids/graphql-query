@@ -21,10 +21,17 @@ import java.util.concurrent.ConcurrentMap
 // modifying the query result is destructive
 typealias  ResultModifier = (Any) -> Unit
 typealias  Predicate = (Any) -> Boolean
+typealias QueryTimeFunction = (Any, Variables) -> Any
+typealias QueryTimePredicate = (Any, Variables) -> Boolean
 // calculates a modifier from a query
 typealias FilterParser = (Value<*>) -> ResultModifier
 
-/** Adds filtering capabilities to GraphQL */
+/** Adds filtering capabilities to GraphQL.
+ * This happens in steps:
+ * 1 extend an existing GraphQL schema with an extra '_filter' parameter for each field of list type. This happens once when the Schema is built.
+ * 2 when a query comes in the first time, "compile" it to a ResultModifier which takes a complete Result tree and modifies those fields. This happens once for each unique query.
+ * 3 when the query is actually executed, retrieve that ResultModifier from the cache and apply it to the result. This happens for every query.
+ * */
 class FilterInstrumentation(
     val ops: OperatorRegistry,
     val filterName: String,
@@ -85,15 +92,19 @@ class FilterInstrumentation(
                         val types = typeRegister.types
                         parentsTypeRegister?.subTypes?.put(fieldName, typeRegister)
                         if (filterArgument != null) {
-                            val test=analysis.functionFor(fieldType, Boolean::class).operators
-                            val modifier: (Any) -> Unit = { data: Any ->
+                            val filterFunction = analysis.functionFor(
+                                fieldType.filterableType()?.wrappedType?.testableType() ?: throw Exception("Can't filter $fieldType"),
+                                Boolean::class
+                            )
+                            val test: Predicate = filterFunction.compile(filterArgument) as Predicate
+                            val modifier: ResultModifier = { data: Any ->
                                 val iterator = (data as? MutableIterable<Any>)?.iterator()
                                 iterator?.forEach { if (!test(it)) iterator.remove() }
                             }
                             val showingAs = modifier.showingAs { "filter on: \n$test" }
                             println(showingAs)
-                            return showingAs
-                            val modifier = filterArgument.toModifier(types!!)
+//                            return showingAs
+//                            val modifier = filterArgument.toModifier(types!!)
                             println("Field $fieldName has filter, types are: $types, modifier is: $modifier")
                             (parentsTypeRegister?.toModify ?: toModify).put(fieldName, modifier)
                         }
@@ -126,7 +137,8 @@ class FilterInstrumentation(
     ): GraphQLSchema = SchemaTransformer.transformSchema(schema, analysis)
         .also {
             println("Found these functions: ${analysis.functions}")
-            println(schemaPrinter.print(it)) }
+            println(schemaPrinter.print(it))
+        }
 
     override fun instrumentDataFetcher(
         dataFetcher: DataFetcher<*>,
@@ -134,7 +146,7 @@ class FilterInstrumentation(
     ): DataFetcher<*> {
         if (parameters.environment.containsArgument(filterName)) {
             println("Datafetcher: $dataFetcher with parms: ${parameters.environment.arguments} on source: ${parameters.environment.getSource<Any>()}")
-            dataFetcher
+            dataFetcher // should wrap in filtering datafetcher
         } else dataFetcher
         return super.instrumentDataFetcher(dataFetcher, parameters)
     }
@@ -143,7 +155,7 @@ class FilterInstrumentation(
         executionResult: ExecutionResult,
         parameters: InstrumentationExecutionParameters
     ): CompletableFuture<ExecutionResult> {
-        query2ResultModifier.get(parameters.query)?.invoke(executionResult.getData())
+        query2ResultModifier.get(parameters.query)?.invoke(executionResult.getData()) // destructively modify result
         return super.instrumentExecutionResult(executionResult, parameters)
     }
 
