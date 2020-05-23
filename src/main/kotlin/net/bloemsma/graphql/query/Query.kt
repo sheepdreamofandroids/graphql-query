@@ -1,4 +1,4 @@
-package net.bloemsma
+package net.bloemsma.graphql.query
 
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLSchema
