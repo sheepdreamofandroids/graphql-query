@@ -1,13 +1,10 @@
-package net.bloemsma
+package net.bloemsma.graphql.query
 
 import graphql.Scalars
-import graphql.language.BooleanValue
 import graphql.language.ObjectValue
 import graphql.language.Value
 import graphql.language.VariableReference
 import graphql.schema.*
-import java.math.BigDecimal
-import java.math.BigInteger
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
@@ -57,6 +54,8 @@ class SimpleOperator<R : Any>(
             description?.run { description(this) }
         }
     }
+
+    override fun toString()="$name($contextType, $parameterType)->$resultClass // $description"
 }
 
 //    override fun compile(parm: Value<*>): (Any) -> Any {
@@ -77,7 +76,13 @@ inline fun <reified R : Any, reified P : Any, reified C : Any> operator(
     val resultClass = R::class
     val contextClass = C::class
     val parameterClass = P::class
-    return simpleOperator(name, resultClass, contextClass, parameterClass, body)
+    return simpleOperator(
+        name,
+        resultClass,
+        contextClass,
+        parameterClass,
+        body
+    )
 }
 
 
@@ -92,9 +97,17 @@ inline fun <reified C : Any, reified P : Any, reified R : Any> simpleOperator(
     assert(R::class.isSubclassOf(resultClass))
     assert(parameterClass.isSubclassOf(P::class))
     assert(contextClass.isSubclassOf(C::class))
-    val fromParam: (Any?) -> P? = az(parameterClass)
-    val fromContext: (Any?) -> C? = az(contextClass)
-    return simpleOperator(name, resultClass, contextClass, fromContext, parameterClass, fromParam, body)
+    val fromParam: (Any?) -> P? = converterTo(parameterClass)
+    val fromContext: (Any?) -> C? = converterTo(contextClass)
+    return simpleOperator(
+        name,
+        resultClass,
+        contextClass,
+        fromContext,
+        parameterClass,
+        fromParam,
+        body
+    )
 }
 
 fun <C : Any, P : Any, R : Any> simpleOperatorImpl(
@@ -104,9 +117,17 @@ fun <C : Any, P : Any, R : Any> simpleOperatorImpl(
     parameterClass: KClass<*>,
     body: (context: C, parameter: P) -> R
 ): SimpleOperator<R> {
-    val fromParam: (Any?) -> P? = az(parameterClass)
-    val fromContext: (Any?) -> C? = az(contextClass)
-    return simpleOperator(name, resultClass, contextClass, fromContext, parameterClass, fromParam, body)
+    val fromParam: (Any?) -> P? = converterTo(parameterClass)
+    val fromContext: (Any?) -> C? = converterTo(contextClass)
+    return simpleOperator(
+        name,
+        resultClass,
+        contextClass,
+        fromContext,
+        parameterClass,
+        fromParam,
+        body
+    )
 }
 
 fun <C : Any, P : Any, R : Any> simpleOperator(
@@ -134,47 +155,6 @@ fun <C : Any, P : Any, R : Any> simpleOperator(
     )
 }
 
-inline fun <reified T : Any> az(): (Any?) -> T? {
-    return az(T::class)
-}
-
-fun <T : Any> az(kClass: KClass<*>): (Any?) -> T? {
-    return when (kClass) {
-        Boolean::class -> ::asBoolean
-        Long::class -> (::asLong)
-        Double::class -> (::asDouble)
-        String::class -> (::asString)
-        Byte::class -> (::asByte)
-        else -> throw Exception("Cannot convert to $kClass")
-    } as (Any?) -> T?
-}
-
-fun asBoolean(any: Any?): Boolean? = when (any) {
-    is Boolean -> any
-    is BooleanValue -> any.isValue
-    else -> null
-}
-
-fun asLong(any: Any?): Long? = when (any) {
-    is Number -> any.toLong()
-    is BigInteger -> any.longValueExact()
-    else -> null
-}
-
-fun asByte(any: Any?): Byte? = when (any) {
-    is Number -> any.toByte()
-    is BigInteger -> any.byteValueExact()
-    else -> null
-}
-
-fun asDouble(any: Any?): Double? = when (any) {
-    is Number -> any.toDouble()
-    is BigDecimal -> any.toDouble()
-    else -> null
-}
-
-fun asString(any: Any?): String? = any?.toString()
-
 inline fun <reified T : Any> valueOrVariable(noinline convert: (Any?) -> T?, any: Any, vars: Variables): T =
     valueOrVariable(convert, any, vars, T::class)
 
@@ -188,7 +168,7 @@ val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
     Boolean::class to Scalars.GraphQLBoolean,
     Byte::class to Scalars.GraphQLByte,
 //    Short::class to Scalars.GraphQLShort,
-//    Int::class to Scalars.GraphQLInt,
+    Int::class to Scalars.GraphQLInt,
     Long::class to Scalars.GraphQLLong,
     Double::class to Scalars.GraphQLFloat,
 // WTF?    Double::class to GraphQLDouble,
@@ -242,11 +222,19 @@ class AndOfFields : Operator<Boolean> {
 
     override val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> Boolean =
         { param: Query, schemaFunction: SchemaFunction ->
-            (param as? ObjectValue)?.objectFields?.map {
-                val name = it.name
-                { context: Result, variables: Variables -> context.getField(name) }
+            val tests: List<(context: Result, variables: Map<String, Any?>) -> Any> =
+                (param as? ObjectValue)?.objectFields?.mapNotNull { objectField ->
+                    schemaFunction.operators.find { it.name == objectField.name }
+                        ?.compile?.invoke(objectField.value, schemaFunction)
+                } ?: throw Exception("Must be object")
+            ;
+            { context: Result, variables: Variables ->
+                tests.all {
+                    it.invoke(context, variables).asBoolean() ?: throw Exception("Expecting only booleans")
+                }
             }
         }
+
 
     //        get() = TODO("Not yet implemented")
     override val name: String = "and of fields"

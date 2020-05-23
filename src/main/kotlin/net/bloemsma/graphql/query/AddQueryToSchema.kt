@@ -1,4 +1,4 @@
-package net.bloemsma
+package net.bloemsma.graphql.query
 
 import graphql.language.Argument
 import graphql.schema.*
@@ -61,9 +61,13 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
 
     fun functionFor(contextType: GraphQLOutputType, resultClass: KClass<*>): SchemaFunction {
         return functions.computeIfAbsent(contextType.makeName()) { _ ->
-            SchemaFunction(contextType, resultClass, operators, { a: GraphQLOutputType, b: KClass<*> ->
-                functionFor(a, b).ref
-            })
+            SchemaFunction(
+                contextType,
+                resultClass,
+                operators,
+                { a: GraphQLOutputType, b: KClass<*> ->
+                    functionFor(a, b).ref
+                })
         }
     }
 

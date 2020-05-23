@@ -1,4 +1,4 @@
-package net.bloemsma
+package net.bloemsma.graphql.query
 
 import graphql.ExecutionResult
 import graphql.analysis.*
@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 
 // modifying the query result is destructive
-typealias  ResultModifier = (Any) -> Unit
+typealias  ResultModifier = (Any, Variables) -> Unit
 typealias  Predicate = (Any) -> Boolean
 typealias QueryTimeFunction = (Any, Variables) -> Any
 typealias QueryTimePredicate = (Any, Variables) -> Boolean
@@ -45,7 +45,10 @@ class FilterInstrumentation(
         data class Q2MState(val x: Int, val types: Map<Field, GraphQLType>)
 
         override fun reduceField(env: QueryVisitorFieldEnvironment, acc: Q2MState): Q2MState {
-            val q2MState = Q2MState(2, acc.types + (env.field to env.parentType))
+            val q2MState = Q2MState(
+                2,
+                acc.types + (env.field to env.parentType)
+            )
 //            println(q2MState)
             println(env.field)
             return q2MState
@@ -75,7 +78,9 @@ class FilterInstrumentation(
                 val fieldName = env.field.name
                 val fieldType = env.fieldDefinition.type
                 println("${context.phase}: $fieldName alias ${env.field.alias} of type $fieldType")
-                val parentsTypeRegister: TypeRegister? = context.getVarFromParents(TypeRegister::class.java)
+                val parentsTypeRegister: TypeRegister? = context.getVarFromParents(
+                    TypeRegister::class.java
+                )
                 parentsTypeRegister?.types?.put(fieldName, fieldType)
                 val filterArgument = env.field.arguments.firstOrNull { arg: Argument -> arg.name == filterName }
                 val hasFilter = filterArgument != null
@@ -93,13 +98,18 @@ class FilterInstrumentation(
                         parentsTypeRegister?.subTypes?.put(fieldName, typeRegister)
                         if (filterArgument != null) {
                             val filterFunction = analysis.functionFor(
-                                fieldType.filterableType()?.wrappedType?.testableType() ?: throw Exception("Can't filter $fieldType"),
+                                fieldType.filterableType()?.wrappedType?.testableType()
+                                    ?: throw Exception("Can't filter $fieldType"),
                                 Boolean::class
                             )
-                            val test: Predicate = filterFunction.compile(filterArgument) as Predicate
-                            val modifier: ResultModifier = { data: Any ->
+                            val test: QueryTimeFunction = filterFunction.compile(filterArgument)
+                            val modifier: ResultModifier = { data: Any, variables: Variables ->
                                 val iterator = (data as? MutableIterable<Any>)?.iterator()
-                                iterator?.forEach { if (!test(it)) iterator.remove() }
+                                iterator?.forEach {
+                                    if (!(test(it, variables).asBoolean()
+                                            ?: throw Exception("must be predicate"))
+                                    ) iterator.remove()
+                                }
                             }
                             val showingAs = modifier.showingAs { "filter on: \n$test" }
                             println(showingAs)
@@ -155,21 +165,30 @@ class FilterInstrumentation(
         executionResult: ExecutionResult,
         parameters: InstrumentationExecutionParameters
     ): CompletableFuture<ExecutionResult> {
-        query2ResultModifier.get(parameters.query)?.invoke(executionResult.getData()) // destructively modify result
+        query2ResultModifier.get(parameters.query)
+            ?.invoke(executionResult.getData(), parameters.variables) // destructively modify result
         return super.instrumentExecutionResult(executionResult, parameters)
     }
 
 
     private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier {
 
-
-        val mapNotNull: List<Pair<String, (Any) -> Unit>> = document.definitions.mapNotNull { definition ->
+        val mapNotNull: List<Pair<String, ResultModifier>> = document.definitions.mapNotNull { definition ->
             if (definition is OperationDefinition && definition.operation == OperationDefinition.Operation.QUERY)
-                definition.toModifier()?.let { definition.name to it }
+                definition.selectionSet.selections.mapNotNull {
+                val type = schema.queryType.getFieldDefinition("").type
+                   analysis.functionFor(type) type
+
+                }
+                toModifier()?.let { definition.name to it }
             else null
         }
         println(mapNotNull)
-        return { it }
+        return { result: Any, variables: Variables ->
+            mapNotNull.forEach {
+                it.second.invoke(result, variables)
+            }
+        }.showingAs { "not doing anything" }
 //        return when {
 //            mapNotNull.isNullOrEmpty() -> { x -> x }
 //            else -> { result ->
@@ -191,7 +210,9 @@ class FilterInstrumentation(
     private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): ResultModifier? =
         getSelectionSet().selections.mapNotNull { selection ->
             (selection as? Field)?.arguments?.find { it.name == filterName }?.toModifier(mapOf())
-        }.let { { it } }
+        }.let {
+            { _, _ -> }
+        }
 
     private fun Argument.toModifier(types: Map<String, GraphQLType>): ResultModifier {
         val test: Predicate = this.value.toPredicate(types)
@@ -206,7 +227,7 @@ class FilterInstrumentation(
 //            }
 //        }
 
-        val modifier: (Any) -> Unit = { data: Any ->
+        val modifier: (Any, Variables) -> Unit = { data: Any, _ ->
             val iterator = (data as? MutableIterable<Any>)?.iterator()
             iterator?.forEach { if (!test(it)) iterator.remove() }
         }
@@ -238,9 +259,16 @@ class FilterInstrumentation(
 
 }
 
-fun <I, O> ((I) -> O).showingAs(body: () -> String): (I) -> O = let {
+fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {
     object : ((I) -> O) {
         override fun invoke(i: I): O = it(i)
+        override fun toString(): String = body()
+    }
+}
+
+fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
+    object : ((I1, I2) -> O) {
+        override fun invoke(i1: I1, i2: I2): O = it(i1, i2)
         override fun toString(): String = body()
     }
 }

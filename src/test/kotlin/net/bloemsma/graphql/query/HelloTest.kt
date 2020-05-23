@@ -1,4 +1,4 @@
-package net.bloemsma
+package net.bloemsma.graphql.query
 
 import org.junit.Test
 import kotlin.test.assertEquals
