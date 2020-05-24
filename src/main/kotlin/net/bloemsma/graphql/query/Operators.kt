@@ -11,13 +11,9 @@ import kotlin.reflect.full.isSubclassOf
 
 class OperatorRegistry(val operators: Iterable<Operator<*>>) {
     //    private val map<KClass<*>,
-    fun applicableTo(resultType: KClass<*>, context: GraphQLOutputType): Iterable<Operator<*>> =
-        operators.filter { it.canProduce(resultType, context) }
+    fun <R : Any> applicableTo(resultType: KClass<R>, context: GraphQLOutputType): Iterable<Operator<R>> =
+        operators.filter { it.canProduce(resultType, context) } as Iterable<Operator<R>>
 }
-
-typealias Variables = Map<String, *>
-typealias Result = Any
-typealias Query = Value<*>
 
 interface Operator<R : Any> {
     val name: String
@@ -28,7 +24,7 @@ interface Operator<R : Any> {
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> GraphQLInputType
     )
 
-    val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> R
+    val compile: (param: Query, schemaFunction: SchemaFunction<R>) -> QueryFunction<R>
 //    fun compile(expr: Value<*>): (Any) -> Any
 }
 
@@ -38,7 +34,7 @@ class SimpleOperator<R : Any>(
     val contextType: GraphQLOutputType,
     val parameterType: GraphQLInputType,
     val description: String? = null,
-    override val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> R
+    override val compile: (param: Query, schemaFunction: SchemaFunction<R>) -> QueryFunction<R>
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean {
         return resultType == resultClass && this.contextType == contextType
@@ -55,7 +51,7 @@ class SimpleOperator<R : Any>(
         }
     }
 
-    override fun toString()="$name($contextType, $parameterType)->$resultClass // $description"
+    override fun toString() = "$name($contextType, $parameterType)->$resultClass // $description"
 }
 
 //    override fun compile(parm: Value<*>): (Any) -> Any {
@@ -220,8 +216,8 @@ class AndOfFields : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> Boolean =
-        { param: Query, schemaFunction: SchemaFunction ->
+    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>) -> QueryPredicate =
+        { param: Query, schemaFunction: SchemaFunction<Boolean> ->
             val tests: List<(context: Result, variables: Map<String, Any?>) -> Any> =
                 (param as? ObjectValue)?.objectFields?.mapNotNull { objectField ->
                     schemaFunction.operators.find { it.name == objectField.name }
@@ -255,7 +251,7 @@ class OrOfFields : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> Boolean
+    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>) -> QueryPredicate
         get() = TODO("Not yet implemented")
     override val name: String = "_OR"
 }
@@ -276,7 +272,7 @@ class AnyOfList : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction) -> (context: Result, variables: Variables) -> Boolean
+    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>) -> QueryPredicate
         get() = TODO("Not yet implemented")
     override val name: String = "_ANY"
 }

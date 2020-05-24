@@ -18,12 +18,12 @@ import kotlin.reflect.KClass
 // Finally {eq: 3} and {gt: 5} are operators expecting a numerical context with literal parameters.
 
 /** A function for one particular type in the schema.*/
-class SchemaFunction(
+class SchemaFunction<R : Any>(
     /** The context in which this function will operate, i.e. the type of data in the result to be transformed.*/
     contextQlType: GraphQLOutputType,
     /** The result of this operator when executing, for example Boolean when in a filter.
      * But it could be something other, like an Integer for an add operator.*/
-    resultClass: KClass<*>,
+    resultClass: KClass<R>,
     /** All available operators in the system.*/
     ops: OperatorRegistry,
     /** Something that can resolve nested operators. */
@@ -32,7 +32,7 @@ class SchemaFunction(
     private val signatureName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
 
     val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
-    val operators: Iterable<Operator<*>> = ops.applicableTo(resultClass, contextQlType)
+    val operators: Iterable<Operator<R>> = ops.applicableTo(resultClass, contextQlType)
 
     val parmQlType: GraphQLInputType by lazy {
         // lazy to avoid infinite recursion
@@ -49,7 +49,7 @@ class SchemaFunction(
         return "Function for $signatureName"
     }
 
-    fun compile(argument: Argument): QueryTimeFunction =
+    fun compile(argument: Argument): QueryFunction<R> =
         operators.find { it.name == argument.name||argument.name=="_filter" }
             ?.compile
             ?.invoke(argument.value, this)
@@ -57,18 +57,18 @@ class SchemaFunction(
 }
 
 class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
-    val functions: MutableMap<String, SchemaFunction> = mutableMapOf()
+    val functions: MutableMap<String, SchemaFunction<*>> = mutableMapOf()
 
-    fun functionFor(contextType: GraphQLOutputType, resultClass: KClass<*>): SchemaFunction {
+    fun <R : Any> functionFor(contextType: GraphQLOutputType, resultClass: KClass<R>): SchemaFunction<R> {
         return functions.computeIfAbsent(contextType.makeName()) { _ ->
-            SchemaFunction(
+            SchemaFunction<R>(
                 contextType,
                 resultClass,
                 operators,
                 { a: GraphQLOutputType, b: KClass<*> ->
                     functionFor(a, b).ref
                 })
-        }
+        } as SchemaFunction<R>
     }
 
     override fun visitGraphQLFieldDefinition(

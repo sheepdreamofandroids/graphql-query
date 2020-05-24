@@ -1,30 +1,19 @@
 package net.bloemsma.graphql.query
 
 import graphql.ExecutionResult
+import graphql.Scalars.GraphQLString
 import graphql.analysis.*
 import graphql.execution.instrumentation.DocumentAndVariables
 import graphql.execution.instrumentation.SimpleInstrumentation
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters
-import graphql.execution.instrumentation.parameters.InstrumentationFieldFetchParameters
 import graphql.language.*
-import graphql.schema.DataFetcher
-import graphql.schema.GraphQLSchema
-import graphql.schema.GraphQLType
-import graphql.schema.SchemaTransformer
+import graphql.schema.*
 import graphql.schema.idl.SchemaPrinter
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
-
-// modifying the query result is destructive
-typealias  ResultModifier = (Any, Variables) -> Unit
-typealias  Predicate = (Any) -> Boolean
-typealias QueryTimeFunction = (Any, Variables) -> Any
-typealias QueryTimePredicate = (Any, Variables) -> Boolean
-// calculates a modifier from a query
-typealias FilterParser = (Value<*>) -> ResultModifier
 
 /** Adds filtering capabilities to GraphQL.
  * This happens in steps:
@@ -102,12 +91,11 @@ class FilterInstrumentation(
                                     ?: throw Exception("Can't filter $fieldType"),
                                 Boolean::class
                             )
-                            val test: QueryTimeFunction = filterFunction.compile(filterArgument)
+                            val test: QueryFunction<Boolean> = filterFunction.compile(filterArgument)
                             val modifier: ResultModifier = { data: Any, variables: Variables ->
                                 val iterator = (data as? MutableIterable<Any>)?.iterator()
                                 iterator?.forEach {
-                                    if (!(test(it, variables).asBoolean()
-                                            ?: throw Exception("must be predicate"))
+                                    if (!(test(it, variables))
                                     ) iterator.remove()
                                 }
                             }
@@ -133,6 +121,7 @@ class FilterInstrumentation(
         println("To modify: $toModify")
         query2ResultModifier.getOrPut(parameters.query) {
             parseDocument(documentAndVariables.document, parameters.schema)
+                ?: { _, _ -> }
         }
         return documentAndVariables
     }
@@ -150,16 +139,16 @@ class FilterInstrumentation(
             println(schemaPrinter.print(it))
         }
 
-    override fun instrumentDataFetcher(
-        dataFetcher: DataFetcher<*>,
-        parameters: InstrumentationFieldFetchParameters
-    ): DataFetcher<*> {
-        if (parameters.environment.containsArgument(filterName)) {
-            println("Datafetcher: $dataFetcher with parms: ${parameters.environment.arguments} on source: ${parameters.environment.getSource<Any>()}")
-            dataFetcher // should wrap in filtering datafetcher
-        } else dataFetcher
-        return super.instrumentDataFetcher(dataFetcher, parameters)
-    }
+//    override fun instrumentDataFetcher(
+//        dataFetcher: DataFetcher<*>,
+//        parameters: InstrumentationFieldFetchParameters
+//    ): DataFetcher<*> {
+//        if (parameters.environment.containsArgument(filterName)) {
+//            println("Datafetcher: $dataFetcher with parms: ${parameters.environment.arguments} on source: ${parameters.environment.getSource<Any>()}")
+//            dataFetcher // should wrap in filtering datafetcher
+//        } else dataFetcher
+//        return super.instrumentDataFetcher(dataFetcher, parameters)
+//    }
 
     override fun instrumentExecutionResult(
         executionResult: ExecutionResult,
@@ -171,24 +160,34 @@ class FilterInstrumentation(
     }
 
 
-    private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier {
+    private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier? {
+        val field = document.definitions
+            .mapNotNull { it as? OperationDefinition }
+            .filter { it.operation == OperationDefinition.Operation.QUERY }
+            .flatMap { it.selectionSet.getSelectionsOfType(Field::class.java) }
+            .firstOrNull()
 
-        val mapNotNull: List<Pair<String, ResultModifier>> = document.definitions.mapNotNull { definition ->
-            if (definition is OperationDefinition && definition.operation == OperationDefinition.Operation.QUERY)
-                definition.selectionSet.selections.mapNotNull {
-                val type = schema.queryType.getFieldDefinition("").type
-                   analysis.functionFor(type) type
-
-                }
-                toModifier()?.let { definition.name to it }
-            else null
+        return field?.let {
+            val type = schema.queryType.getFieldDefinition(it.name).type
+            modifierFor(it, type)
         }
-        println(mapNotNull)
-        return { result: Any, variables: Variables ->
-            mapNotNull.forEach {
-                it.second.invoke(result, variables)
-            }
-        }.showingAs { "not doing anything" }
+
+//        val mapNotNull: List<Pair<String, ResultModifier>> = document.definitions.mapNotNull { definition ->
+//            if (definition is OperationDefinition && definition.operation == OperationDefinition.Operation.QUERY)
+//                definition.selectionSet.selections.mapNotNull {
+//                    val type = schema.queryType.getFieldDefinition("").type
+//                    analysis.functionFor(type) type
+//
+//                }
+//            toModifier()?.let { definition.name to it }
+//            else null
+//        }
+//        println(mapNotNull)
+//        return { result: Any, variables: Variables ->
+//            mapNotNull.forEach {
+//                it.second.invoke(result, variables)
+//            }
+//        }.showingAs { "not doing anything" }
 //        return when {
 //            mapNotNull.isNullOrEmpty() -> { x -> x }
 //            else -> { result ->
@@ -206,6 +205,43 @@ class FilterInstrumentation(
 //        }
     }
 
+    private fun modifierFor(field: Field, type: GraphQLOutputType): ResultModifier? {
+        return when (type) {
+            is GraphQLList ->
+                field.arguments.firstOrNull { it.name == filterName }?.let {
+                    analysis.functionFor(type.wrappedType as GraphQLOutputType, Boolean::class).compile(it)
+                }?.let { pred: QueryPredicate ->
+                    val modifier: ResultModifier = { context: Result, variables: Variables ->
+                        (context as? MutableIterable<Result>)
+                            ?.let {
+                                val iterator = it.iterator()
+                                while (iterator.hasNext())
+                                    if (!pred(iterator.next(), variables))
+                                        iterator.remove()
+                            }
+                    }
+                    modifier
+                }
+
+            is GraphQLObjectType -> field.selectionSet.getSelectionsOfType(Field::class.java)
+                .mapNotNull { sel -> modifierFor(sel, type.getFieldDefinition(sel.name).type)?.let { sel.name to it } }
+                .let { fieldModifiers: List<Pair<String, ResultModifier>> ->
+                    when {
+                        fieldModifiers.isEmpty() -> null
+                        else -> {
+                            val modifier: ResultModifier = { context: Result, variables: Variables ->
+                                for ((name, modifier) in fieldModifiers) {
+                                    modifier(context.getField(name), variables)
+                                }
+                            }
+                            modifier
+                        }
+                    }
+                }
+            else -> null
+        }
+    }
+
 
     private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): ResultModifier? =
         getSelectionSet().selections.mapNotNull { selection ->
@@ -215,7 +251,7 @@ class FilterInstrumentation(
         }
 
     private fun Argument.toModifier(types: Map<String, GraphQLType>): ResultModifier {
-        val test: Predicate = this.value.toPredicate(types)
+        val test: XPredicate = this.value.toPredicate(types)
 //        return object : Modifier {
 //            override fun invoke(data: Any) {
 //                val iterator = (data as? MutableIterable<Any>)?.iterator()
@@ -236,8 +272,8 @@ class FilterInstrumentation(
         return showingAs
     }
 
-    private fun Value<*>.toPredicate(types: Map<String, GraphQLType>): Predicate {
-        val nothing: Predicate = when (this) {
+    private fun Value<*>.toPredicate(types: Map<String, GraphQLType>): XPredicate {
+        val nothing: XPredicate = when (this) {
             is ObjectValue -> objectFields.mapNotNull { objectField -> objectField.toPredicate(types) }
                 .let { predicates ->
                     { any: Any -> predicates.all { it.invoke(this) } }
@@ -248,7 +284,7 @@ class FilterInstrumentation(
         return nothing
     }
 
-    private fun ObjectField.toPredicate(types: Map<String, GraphQLType>): Predicate {
+    private fun ObjectField.toPredicate(types: Map<String, GraphQLType>): XPredicate {
 //        ops.operators.find { it.canProduce(Boolean::class, this.) }
         return { data -> true }
     }
@@ -258,6 +294,9 @@ class FilterInstrumentation(
 //    }
 
 }
+
+private fun Any.getField(name: String): Any = PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
+
 
 fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {
     object : ((I) -> O) {
