@@ -1,55 +1,61 @@
 package net.bloemsma.graphql.query
 
 import graphql.language.BooleanValue
+import graphql.language.FloatValue
+import graphql.language.IntValue
 import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.reflect.KClass
 
 
-inline fun <reified T : Any> converterTo(): (Any?) -> T? {
-    return converterTo(T::class)
+inline fun <reified T : Result> resultTo(): (Result?) -> T? {
+    return resultTo(T::class)
 }
 
-fun <T : Any> converterTo(kClass: KClass<*>): (Any?) -> T? {
+fun <T : Result> resultTo(kClass: KClass<*>): (Result?) -> T? {
     return when (kClass) {
-        Boolean::class -> Any?::asBoolean
-        Int::class -> Any?::asInt
-        Long::class -> Any?::asLong
-        Double::class -> Any?::asDouble
-        String::class -> Any?::asString
-        Byte::class -> Any?::asByte
+        Boolean::class -> Result?::asBoolean
+        Int::class -> Result?::asInt
+        Long::class -> Result?::asLong
+        Double::class -> Result?::asDouble
+        String::class -> Result?::asString
+        Byte::class -> Result?::asByte
         else -> throw Exception("Cannot convert to $kClass")
-    } as (Any?) -> T?
+    } as (Result?) -> T?
 }
 
-fun Any?.asBoolean(): Boolean? = when (this) {
+fun Result?.asBoolean(): Boolean? = when (this) {
     is Boolean -> this
     is BooleanValue -> isValue
     else -> null
 }
 
-fun Any?.asLong(): Long? = when (this) {
+fun Result?.asLong(): Long? = when (this) {
     is Number -> toLong()
     is BigInteger -> longValueExact()
+    is IntValue -> value.longValueExact()
     else -> null
 }
 
-fun Any?.asInt(): Int? = when (this) {
+fun Result?.asInt(): Int? = when (this) {
     is Number -> toInt()
     is BigInteger -> intValueExact()
+    is IntValue -> value.intValueExact()
     else -> null
 }
 
-fun Any?.asByte(): Byte? = when (this) {
+fun Result?.asByte(): Byte? = when (this) {
     is Number -> toByte()
     is BigInteger -> byteValueExact()
+    is IntValue -> value.byteValueExact()
     else -> null
 }
 
-fun Any?.asDouble(): Double? = when (this) {
+fun Result?.asDouble(): Double? = when (this) {
     is Number -> toDouble()
     is BigDecimal -> toDouble()
+    is FloatValue->value.toDouble()
     else -> null
 }
 
-fun Any?.asString(): String? = this?.toString()
+fun Result?.asString(): String? = this?.toString()

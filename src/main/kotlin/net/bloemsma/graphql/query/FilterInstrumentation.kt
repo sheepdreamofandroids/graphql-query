@@ -61,7 +61,7 @@ class FilterInstrumentation(
             .build()
 //        queryTraverser.reducePostOrder(QueryToModifier(ops), QueryToModifier.Q2MState(1, emptyMap()))
         val toModify: MutableMap<String, ResultModifier> = mutableMapOf()
-        if (true) queryTraverser.visitDepthFirst(object : QueryVisitorStub() {
+        if (false) queryTraverser.visitDepthFirst(object : QueryVisitorStub() {
             override fun visitField(env: QueryVisitorFieldEnvironment) {
                 val context = env.traverserContext
                 val fieldName = env.field.name
@@ -91,7 +91,7 @@ class FilterInstrumentation(
                                     ?: throw Exception("Can't filter $fieldType"),
                                 Boolean::class
                             )
-                            val test: QueryFunction<Boolean> = filterFunction.compile(filterArgument)
+                            val test: QueryFunction<Boolean> = filterFunction.compile(null, filterArgument.value)
                             val modifier: ResultModifier = { data: Any, variables: Variables ->
                                 val iterator = (data as? MutableIterable<Any>)?.iterator()
                                 iterator?.forEach {
@@ -120,13 +120,13 @@ class FilterInstrumentation(
         })
         println("To modify: $toModify")
         query2ResultModifier.getOrPut(parameters.query) {
-            parseDocument(documentAndVariables.document, parameters.schema)
-                ?: { _, _ -> }
+            parseDocument(documentAndVariables.document, parameters.schema) ?: noModification
         }
         return documentAndVariables
     }
 
 
+    val noModification: ResultModifier = { _: Result, _: Variables -> }.showingAs { "no modification" }
     private val analysis = AddQueryToSchema(ops)
 
     /** Extends schema with filter parameters on lists. */
@@ -209,7 +209,10 @@ class FilterInstrumentation(
         return when (type) {
             is GraphQLList ->
                 field.arguments.firstOrNull { it.name == filterName }?.let {
-                    analysis.functionFor(type.wrappedType as GraphQLOutputType, Boolean::class).compile(it)
+                    analysis
+                        .functionFor(type.wrappedType as GraphQLOutputType, Boolean::class)
+                        .compile(null, it.value)
+                        .also { println("Filtering ${field.name} on $it") }
                 }?.let { pred: QueryPredicate ->
                     val modifier: ResultModifier = { context: Result, variables: Variables ->
                         (context as? MutableIterable<Result>)
@@ -243,51 +246,51 @@ class FilterInstrumentation(
     }
 
 
-    private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): ResultModifier? =
-        getSelectionSet().selections.mapNotNull { selection ->
-            (selection as? Field)?.arguments?.find { it.name == filterName }?.toModifier(mapOf())
-        }.let {
-            { _, _ -> }
-        }
-
-    private fun Argument.toModifier(types: Map<String, GraphQLType>): ResultModifier {
-        val test: XPredicate = this.value.toPredicate(types)
-//        return object : Modifier {
-//            override fun invoke(data: Any) {
-//                val iterator = (data as? MutableIterable<Any>)?.iterator()
-//                iterator?.forEach { if (!test(it)) iterator.remove() }
-//            }
-//
-//            override fun toString(): String {
-//                return "super.toString()"
-//            }
+//    private fun <T : Node<*>> SelectionSetContainer<T>.toModifier(): ResultModifier? =
+//        getSelectionSet().selections.mapNotNull { selection ->
+//            (selection as? Field)?.arguments?.find { it.name == filterName }?.toModifier(mapOf())
+//        }.let {
+//            { _, _ -> }
 //        }
+//
+//    private fun Argument.toModifier(types: Map<String, GraphQLType>): ResultModifier {
+//        val test: XPredicate = this.value.toPredicate(types)
+////        return object : Modifier {
+////            override fun invoke(data: Any) {
+////                val iterator = (data as? MutableIterable<Any>)?.iterator()
+////                iterator?.forEach { if (!test(it)) iterator.remove() }
+////            }
+////
+////            override fun toString(): String {
+////                return "super.toString()"
+////            }
+////        }
+//
+//        val modifier: (Any, Variables) -> Unit = { data: Any, _ ->
+//            val iterator = (data as? MutableIterable<Any>)?.iterator()
+//            iterator?.forEach { if (!test(it)) iterator.remove() }
+//        }
+//        val showingAs = modifier.showingAs { "filter on: \n$test" }
+//        println(showingAs)
+//        return showingAs
+//    }
+//
+//    private fun Value<*>.toPredicate(types: Map<String, GraphQLType>): XPredicate {
+//        val nothing: XPredicate = when (this) {
+//            is ObjectValue -> objectFields.mapNotNull { objectField -> objectField.toPredicate(types) }
+//                .let { predicates ->
+//                    { any: Any -> predicates.all { it.invoke(this) } }
+//                        .showingAs { "    ${predicates.joinToString(separator = "\nAND ")}\n" }
+//                }
+//            else -> throw Exception("Not a predate at $sourceLocation")
+//        }
+//        return nothing
+//    }
 
-        val modifier: (Any, Variables) -> Unit = { data: Any, _ ->
-            val iterator = (data as? MutableIterable<Any>)?.iterator()
-            iterator?.forEach { if (!test(it)) iterator.remove() }
-        }
-        val showingAs = modifier.showingAs { "filter on: \n$test" }
-        println(showingAs)
-        return showingAs
-    }
-
-    private fun Value<*>.toPredicate(types: Map<String, GraphQLType>): XPredicate {
-        val nothing: XPredicate = when (this) {
-            is ObjectValue -> objectFields.mapNotNull { objectField -> objectField.toPredicate(types) }
-                .let { predicates ->
-                    { any: Any -> predicates.all { it.invoke(this) } }
-                        .showingAs { "    ${predicates.joinToString(separator = "\nAND ")}\n" }
-                }
-            else -> throw Exception("Not a predate at $sourceLocation")
-        }
-        return nothing
-    }
-
-    private fun ObjectField.toPredicate(types: Map<String, GraphQLType>): XPredicate {
-//        ops.operators.find { it.canProduce(Boolean::class, this.) }
-        return { data -> true }
-    }
+//    private fun ObjectFieldOp.toPredicate(types: Map<String, GraphQLType>): XPredicate {
+////        ops.operators.find { it.canProduce(Boolean::class, this.) }
+//        return { data -> true }
+//    }
 
 //    fun test(it: Any): Any {
 //
@@ -295,19 +298,19 @@ class FilterInstrumentation(
 
 }
 
-private fun Any.getField(name: String): Any = PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
+fun Result.getField(name: String): Any = PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 
 fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {
     object : ((I) -> O) {
         override fun invoke(i: I): O = it(i)
-        override fun toString(): String = body()
+        override fun toString(): String = it.body()
     }
 }
 
 fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
     object : ((I1, I2) -> O) {
         override fun invoke(i1: I1, i2: I2): O = it(i1, i2)
-        override fun toString(): String = body()
+        override fun toString(): String = it.body()
     }
 }

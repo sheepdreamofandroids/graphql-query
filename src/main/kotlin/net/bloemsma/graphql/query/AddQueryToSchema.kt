@@ -1,6 +1,5 @@
 package net.bloemsma.graphql.query
 
-import graphql.language.Argument
 import graphql.schema.*
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
@@ -20,25 +19,26 @@ import kotlin.reflect.KClass
 /** A function for one particular type in the schema.*/
 class SchemaFunction<R : Any>(
     /** The context in which this function will operate, i.e. the type of data in the result to be transformed.*/
-    contextQlType: GraphQLOutputType,
+    val contextQlType: GraphQLOutputType,
     /** The result of this operator when executing, for example Boolean when in a filter.
      * But it could be something other, like an Integer for an add operator.*/
     resultClass: KClass<R>,
     /** All available operators in the system.*/
     ops: OperatorRegistry,
     /** Something that can resolve nested operators. */
-    function: (GraphQLOutputType, KClass<*>) -> GraphQLInputType
+    //TODO just make it a function and subtype, so it can be generified
+    private val function: (GraphQLOutputType, KClass<*>) -> SchemaFunction<*>
 ) {
     private val signatureName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
 
     val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
-    val operators: Iterable<Operator<R>> = ops.applicableTo(resultClass, contextQlType)
+    val operators: Map<String, Operator<R>> = ops.applicableTo(resultClass, contextQlType).associateBy { it.name }
 
     val parmQlType: GraphQLInputType by lazy {
         // lazy to avoid infinite recursion
         GraphQLInputObjectType.newInputObject().apply {
             name(signatureName)
-            for (it in operators) {
+            for (it in operators.values) {
                 it.makeField(contextQlType, this, function)
             }
         }.build()
@@ -49,25 +49,37 @@ class SchemaFunction<R : Any>(
         return "Function for $signatureName"
     }
 
-    fun compile(argument: Argument): QueryFunction<R> =
-        operators.find { it.name == argument.name||argument.name=="_filter" }
-            ?.compile
-            ?.invoke(argument.value, this)
-            ?: throw Exception("Oops")
+    fun compile(name: String?, value: Query): QueryFunction<R> = operators.values
+        .filter { it.name == name || name == null }
+        .mapNotNull { it.compile(value, this) }
+        .let { effectiveOps ->
+            //TODO optimize for lengths 0 and 1
+            { c: Result, v: Variables ->
+                // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
+                effectiveOps.all { it(c, v) as Boolean } as R
+            }
+                .showingAs { effectiveOps.joinToString(prefix = "AND ", separator = "\n    ") }
+        }
+//}
+//                    ?.invoke(value, this)
+//                    ?: throw Exception("Oops")
+
+    fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
+        function(type, kClass).also { println("Got $this") } as SchemaFunction<T>
 }
 
 class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
     val functions: MutableMap<String, SchemaFunction<*>> = mutableMapOf()
-
     fun <R : Any> functionFor(contextType: GraphQLOutputType, resultClass: KClass<R>): SchemaFunction<R> {
+        //TODO key must contain result type
         return functions.computeIfAbsent(contextType.makeName()) { _ ->
             SchemaFunction<R>(
                 contextType,
                 resultClass,
                 operators,
-                { a: GraphQLOutputType, b: KClass<*> ->
-                    functionFor(a, b).ref
-                })
+                { a: GraphQLOutputType, b: KClass<*> -> functionFor(a, b) }
+//                this::functionFor as (GraphQLOutputType, KClass<*>) -> SchemaFunction<*>
+            )
         } as SchemaFunction<R>
     }
 
