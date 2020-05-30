@@ -1,7 +1,6 @@
 package net.bloemsma.graphql.query
 
 import graphql.Scalars
-import graphql.language.ObjectField
 import graphql.language.ObjectValue
 import graphql.language.VariableReference
 import graphql.schema.*
@@ -287,15 +286,22 @@ class ObjectFieldOp<R : Any>(
     }
 
     override val compile = { param: Query, schemaFunction: SchemaFunction<R> ->
-        (param as? ObjectValue)
-            ?.objectFields
-            ?.find { it.name == name }
-            ?.let { field: ObjectField ->
-                schemaFunction.functionFor(
-                    graphQLObjectType.getFieldDefinition(field.name).type,
-                    resultType
-                ).compile(null, field.value)
-            }?.showingAs { "($name) $this" }
+//        (param as? ObjectValue)
+//            ?.objectFields
+//            ?.find { it.name == name }
+//            ?.let { field: ObjectField ->
+        schemaFunction
+            .functionFor(
+                graphQLObjectType.getFieldDefinition(name).type,
+                resultType
+            )
+            .compile(null, param)
+            .let { func ->
+                { c: Result, v: Variables ->
+                    func(c.getField(name), v)
+                }.showingAs { "($name) " }
+            }
+    }
 //            ;
 //            { context: Result, variables: Variables -> fn(context,variables) }
 //
@@ -317,7 +323,7 @@ class ObjectFieldOp<R : Any>(
 //            } ?: throw Exception("Must be object")
 //        ;
 //        { context: Result, variables: Variables -> tests.all { it.invoke(context, variables) } }
-    }
+//    }
 
 
     //        get() = TODO("Not yet implemented")

@@ -1,5 +1,6 @@
 package net.bloemsma.graphql.query
 
+import graphql.language.ObjectValue
 import graphql.schema.*
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
@@ -49,17 +50,26 @@ class SchemaFunction<R : Any>(
         return "Function for $signatureName"
     }
 
-    fun compile(name: String?, value: Query): QueryFunction<R> = operators.values
-        .filter { it.name == name || name == null }
-        .mapNotNull { it.compile(value, this) }
-        .let { effectiveOps ->
-            //TODO optimize for lengths 0 and 1
-            { c: Result, v: Variables ->
-                // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
-                effectiveOps.all { it(c, v) as Boolean } as R
+    fun compile(name: String?, value: Query): QueryFunction<R> =
+        (value as? ObjectValue)?.objectFields
+            ?.mapNotNull {
+                operators[it.name]
+                    ?.compile
+                    ?.invoke(it.value, this)
             }
-                .showingAs { effectiveOps.joinToString(prefix = "AND ", separator = "\n    ") }
-        }
+            ?.let { effectiveOps ->
+                when (effectiveOps.orEmpty().size) {
+                    0 -> throw GraphQlQueryException("Empty object", value.sourceLocation)
+                    1 -> effectiveOps[0]
+                    else -> {
+                        { c: Result, v: Variables ->
+                            // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
+                            effectiveOps.all { it(c, v) as Boolean } as R
+                        }.showingAs { effectiveOps.joinToString(prefix = "AND(", separator = ", ", postfix = ")") }
+                    }
+                }
+            }
+            ?: throw GraphQlQueryException("Empty object", value.sourceLocation)
 //}
 //                    ?.invoke(value, this)
 //                    ?: throw Exception("Oops")

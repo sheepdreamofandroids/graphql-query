@@ -6,7 +6,10 @@ import graphql.analysis.*
 import graphql.execution.instrumentation.DocumentAndVariables
 import graphql.execution.instrumentation.SimpleInstrumentation
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters
-import graphql.language.*
+import graphql.language.Argument
+import graphql.language.Document
+import graphql.language.Field
+import graphql.language.OperationDefinition
 import graphql.schema.*
 import graphql.schema.idl.SchemaPrinter
 import graphql.util.TraversalControl
@@ -169,7 +172,12 @@ class FilterInstrumentation(
 
         return field?.let {
             val type = schema.queryType.getFieldDefinition(it.name).type
-            modifierFor(it, type)
+            modifierFor(it, type)?.let { mod ->
+                { r: Result, v: Variables ->
+                    mod.invoke(r.getField(it.name), v)
+                }
+            }
+
         }
 
 //        val mapNotNull: List<Pair<String, ResultModifier>> = document.definitions.mapNotNull { definition ->
@@ -310,7 +318,13 @@ fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {
 
 fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
     object : ((I1, I2) -> O) {
-        override fun invoke(i1: I1, i2: I2): O = it(i1, i2)
+        override fun invoke(i1: I1, i2: I2): O  {
+            println("executing $this($i1, $i2)")
+            val r = it(i1, i2)
+            println("executing $this -> $r")
+            return r
+        }
+
         override fun toString(): String = it.body()
     }
 }

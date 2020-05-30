@@ -56,7 +56,7 @@ class HelloTest {
         ExecutionInput.newExecutionInput(
             """
             {
-              myresult(_filter: {x: {eq: "x"}, y: {gt: 3, lt: 9}}) {
+              myresult(_filter: { y: {gt: 3, lt: 9}}) {
                 ixxi: x
                 y
                 z {bar}

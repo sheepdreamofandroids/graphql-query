@@ -3,6 +3,7 @@ package net.bloemsma.graphql.query
 import graphql.language.BooleanValue
 import graphql.language.FloatValue
 import graphql.language.IntValue
+import graphql.language.StringValue
 import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.reflect.KClass
@@ -54,8 +55,12 @@ fun Result?.asByte(): Byte? = when (this) {
 fun Result?.asDouble(): Double? = when (this) {
     is Number -> toDouble()
     is BigDecimal -> toDouble()
-    is FloatValue->value.toDouble()
+    is FloatValue -> value.toDouble()
     else -> null
 }
 
-fun Result?.asString(): String? = this?.toString()
+fun Result?.asString(): String? = when (this) {
+    null -> "null"
+    is StringValue -> value
+    else -> toString()
+}
