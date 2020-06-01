@@ -1,11 +1,20 @@
 package net.bloemsma.graphql.query
 
+import assertk.Assert
+import assertk.all
+import assertk.assertThat
+import assertk.assertions.hasSize
+import assertk.assertions.isNotNull
 import graphql.ExecutionInput
+import graphql.ExecutionResult
 import graphql.GraphQL
 import graphql.schema.DataFetcher
 import graphql.schema.FieldCoordinates
 import graphql.schema.GraphQLCodeRegistry
-import graphql.schema.idl.*
+import graphql.schema.idl.RuntimeWiring
+import graphql.schema.idl.SchemaGenerator
+import graphql.schema.idl.SchemaParser
+import graphql.schema.idl.SchemaPrinter
 import kotlin.test.Test
 
 class HelloTest {
@@ -39,10 +48,12 @@ class HelloTest {
         ).build()
     )
 
-    val schemaPrinter = SchemaPrinter(SchemaPrinter.Options
-        .defaultOptions()
-        .includeDirectives(false)
-        .includeIntrospectionTypes(false))
+    val schemaPrinter = SchemaPrinter(
+        SchemaPrinter.Options
+            .defaultOptions()
+            .includeDirectives(false)
+            .includeIntrospectionTypes(false)
+    )
 
     val graphQL = GraphQL.newGraphQL(oldSchema).instrumentation(
         FilterInstrumentation(
@@ -66,9 +77,23 @@ class HelloTest {
     )
 
     @Test
-    fun `just printing`(){
-//        println(schemaPrinter.print(oldSchema))
-        println(executionResult.toSpecification())
+    fun `check filter`() {
+        executionResult.check {
+            println("checking $this")
+            field<List<*>>("myresult") {
+                println("checking list  $this")
+                hasSize(1)
+                at(0) {
+                    field<Int>("y") { equals(3) }
+                }
+            }
+        }
 
+        @Test
+        fun `just printing`() {
+//        println(schemaPrinter.print(oldSchema))
+            println(executionResult.toSpecification())
+
+        }
     }
 }

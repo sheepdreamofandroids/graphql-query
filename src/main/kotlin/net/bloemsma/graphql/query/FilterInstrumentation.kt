@@ -32,21 +32,6 @@ class FilterInstrumentation(
     // this could be an async loading cache, parsing the query while the data is being retrieved
     private val query2ResultModifier: ConcurrentMap<String, ResultModifier> = ConcurrentHashMap()
 
-    class QueryToModifier(val ops: OperatorRegistry) : QueryReducer<QueryToModifier.Q2MState> {
-
-        data class Q2MState(val x: Int, val types: Map<Field, GraphQLType>)
-
-        override fun reduceField(env: QueryVisitorFieldEnvironment, acc: Q2MState): Q2MState {
-            val q2MState = Q2MState(
-                2,
-                acc.types + (env.field to env.parentType)
-            )
-//            println(q2MState)
-            println(env.field)
-            return q2MState
-        }
-    }
-
     class TypeRegister(val types: MutableMap<String, GraphQLType>?) {
         val toModify: MutableMap<String, ResultModifier> = mutableMapOf()
         val subTypes: MutableMap<String, TypeRegister> = mutableMapOf()
@@ -62,7 +47,6 @@ class FilterInstrumentation(
             .schema(parameters.schema)
             .variables(documentAndVariables.variables)
             .build()
-//        queryTraverser.reducePostOrder(QueryToModifier(ops), QueryToModifier.Q2MState(1, emptyMap()))
         val toModify: MutableMap<String, ResultModifier> = mutableMapOf()
         if (false) queryTraverser.visitDepthFirst(object : QueryVisitorStub() {
             override fun visitField(env: QueryVisitorFieldEnvironment) {
@@ -121,7 +105,6 @@ class FilterInstrumentation(
                 return super.visitArgument(environment)
             }
         })
-        println("To modify: $toModify")
         query2ResultModifier.getOrPut(parameters.query) {
             parseDocument(documentAndVariables.document, parameters.schema) ?: noModification
         }
@@ -306,7 +289,8 @@ class FilterInstrumentation(
 
 }
 
-fun Result.getField(name: String): Any = PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
+fun Result.getField(name: String): Any =
+    PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 
 fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {

@@ -197,6 +197,7 @@ val ops = OperatorRegistry(
             )
         }
     }
+            + Not()
             + AndOfFields()
 //            + AndOfFields()
 //        +AnyOfList()
@@ -207,6 +208,34 @@ val ops = OperatorRegistry(
 /** Binary (2 parameter), symmetric(both the same type) predicate*/
 private inline fun <reified T : Any> KClass<*>.bsp(name: String, noinline body: (T, T) -> Boolean) =
     simpleOperator(name, Boolean::class, this, this, body)
+
+class Not : Operator<Boolean> {
+    override val name = "not"
+
+    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
+        resultType == Boolean::class
+
+    override fun makeField(
+        from: GraphQLOutputType,
+        into: GraphQLInputObjectType.Builder,
+        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
+    ) {
+        into.field {
+            it.name("not")
+            it.description("Negates it's argument.")
+            it.type(function(from, Boolean::class).ref)
+        }
+    }
+
+    override val compile = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
+        val parm = (param as? ObjectValue)?.objectFields?.find { it.name == "not" }
+            ?: throw GraphQlQueryException("not needs a parameter", param.sourceLocation)
+        val innerPred =
+            schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class).compile(null, parm.value)
+        ;{ r: Result, v: Variables -> !innerPred(r, v) }
+    }
+
+}
 
 class AndOfFields : Operator<Boolean> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
