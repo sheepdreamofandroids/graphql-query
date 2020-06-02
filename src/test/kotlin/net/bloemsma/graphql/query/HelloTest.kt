@@ -1,12 +1,7 @@
 package net.bloemsma.graphql.query
 
-import assertk.Assert
-import assertk.all
-import assertk.assertThat
 import assertk.assertions.hasSize
-import assertk.assertions.isNotNull
 import graphql.ExecutionInput
-import graphql.ExecutionResult
 import graphql.GraphQL
 import graphql.schema.DataFetcher
 import graphql.schema.FieldCoordinates
@@ -77,23 +72,48 @@ class HelloTest {
     )
 
     @Test
-    fun `check filter`() {
-        executionResult.check {
-            println("checking $this")
-            field<List<*>>("myresult") {
-                println("checking list  $this")
-                hasSize(1)
-                at(0) {
-                    field<Int>("y") { equals(3) }
-                }
+    fun `check filter`() = """ {
+              myresult(_filter: { y: {gt: 3, lt: 9}}) {
+                ixxi: x
+                y
+                z {bar}
+              } 
+            }""".check(graphQL) {
+        println("checking $this")
+        field<List<*>>("myresult") {
+            println("checking list  $this")
+            hasSize(1)
+            at(0) {
+                field<Int>("y") { equals(3) }
             }
         }
+    }
 
-        @Test
-        fun `just printing`() {
-//        println(schemaPrinter.print(oldSchema))
-            println(executionResult.toSpecification())
 
+    @Test
+    fun `check negation`() = """ {
+              myresult(_filter: { y: {not: {gt: 3, lt: 9}}}) {
+                ixxi: x
+                y
+                z {bar}
+              } 
+            }""".check(graphQL) {
+        println("checking $this")
+        field<List<*>>("myresult") {
+            println("checking list  $this")
+            hasSize(1)
+            at(0) {
+                field<Int>("y") { equals(5) }
+            }
         }
     }
+
+
+    @Test
+    fun `just printing`() {
+//        println(schemaPrinter.print(oldSchema))
+        println(executionResult.toSpecification())
+
+    }
 }
+

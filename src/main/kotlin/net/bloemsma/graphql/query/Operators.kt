@@ -228,10 +228,8 @@ class Not : Operator<Boolean> {
     }
 
     override val compile = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
-        val parm = (param as? ObjectValue)?.objectFields?.find { it.name == "not" }
-            ?: throw GraphQlQueryException("not needs a parameter", param.sourceLocation)
         val innerPred =
-            schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class).compile(null, parm.value)
+            schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class).compile(null, param)
         ;{ r: Result, v: Variables -> !innerPred(r, v) }
     }
 

@@ -108,7 +108,7 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
                             // the following two lines add the type as an additional type to the schema this is because
                             // everywhere only the reference is used
                             context.addAdditionalTypes(functions.values.map { it.parmQlType })
-                            println("Added type ${filterFunction.parmQlType}")
+//                            println("Added type ${filterFunction.parmQlType}")
                             arg.type(filterFunction.ref)
                         }
                         // can't use a directive because it's declared globally and
