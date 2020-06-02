@@ -9,13 +9,10 @@ import kotlin.reflect.full.isSubclassOf
 
 
 class OperatorRegistry(private val ops: Iterable<Operator<*>>) {
-    //    private val map<KClass<*>,
-//    private val operators: Iterable<Operator<*>> = ops.flatMap(Operator<*>::expand)
     fun <R : Any> applicableTo(resultType: KClass<R>, context: GraphQLOutputType): Iterable<Operator<R>> =
         ops.flatMap {
             it.produce(resultType, context)
         }
-//        operators.filter { it.canProduce(resultType, context) } as Iterable<Operator<R>>
 }
 
 //TODO split into Operator (implementation) and OperatorGroup (produces Operator)
