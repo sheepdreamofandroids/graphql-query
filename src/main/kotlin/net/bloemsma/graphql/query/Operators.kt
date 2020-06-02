@@ -61,14 +61,7 @@ class SimpleOperator<R : Any>(
     }
 
     override fun toString() = "$name($contextType, $parameterType)->$resultClass // $description"
-//    override fun <T : Any> produce(resultType: KClass<T>, contextType: GraphQLOutputType) =
-//        if (canProduce(resultType, contextType)) listOf(this as Operator<T>) else emptyList()
 }
-
-//    override fun compile(parm: Value<*>): (Any) -> Any {
-//        parm.namedChildren
-//    }
-
 
 fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit) =
     field { it.apply(block) }
