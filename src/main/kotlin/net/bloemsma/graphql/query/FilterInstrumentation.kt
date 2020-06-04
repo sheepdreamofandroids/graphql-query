@@ -63,24 +63,25 @@ class FilterInstrumentation(
     }
 
 
-    private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier? {
-        val field = document.definitions
+    private fun parseDocument(document: Document, schema: GraphQLSchema): ResultModifier? =
+        document.definitions
             .mapNotNull { it as? OperationDefinition }
             .filter { it.operation == OperationDefinition.Operation.QUERY }
             .flatMap { it.selectionSet.getSelectionsOfType(Field::class.java) }
-            .firstOrNull()
-
-        return field?.let {
-            val type = schema.queryType.getFieldDefinition(it.name).type
-            modifierFor(it, type)?.let { mod ->
-                { r: Result, v: Variables ->
-                    mod.invoke(r.getField(it.name), v)
-                }
+            .firstOrNull { !it.name.startsWith("__") }
+            ?.let { field: Field ->
+                schema.queryType.getFieldDefinition(field.name)
+                    ?.type
+                    ?.let { type ->
+                        val modifier = modifierFor(field, type)
+                            ?.let { mod ->
+                                { r: Result, v: Variables ->
+                                    mod.invoke(r.getField(field.name), v)
+                                }
+                            }
+                        modifier
+                    }
             }
-
-        }
-
-    }
 
     private fun modifierFor(field: Field, type: GraphQLOutputType): ResultModifier? {
         return when (type) {

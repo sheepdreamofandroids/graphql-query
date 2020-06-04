@@ -16,7 +16,7 @@ import io.ktor.application.call
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.resolveResource
-import io.ktor.request.path
+import io.ktor.response.respond
 import io.ktor.response.respondOutputStream
 import io.ktor.response.respondText
 import io.ktor.routing.get
@@ -39,24 +39,29 @@ private val UTF8 = Charsets.UTF_8
 private val server = embeddedServer(CIO, 8080) {
     routing {
         get("/") {
-            call.resolveResource("index.html", "static")
-//            call.respondText("Hello, world!", ContentType.Text.Html)
-            call.res
+            call.resolveResource(
+                path = "index.html",
+                resourcePackage = "static"
+            )?.let { call.respond(it) }
         }
         post("/graphql") {
-            val map: Map<String, Any> =
-                InputStreamReader(call.request.receiveChannel().toInputStream(), UTF8).jsonToMap()
-            val query = map["query"] as? String
-            val variables = map["variables"] as? Map<String, Any>
-            val operationName = map["operationName"] as? String
-            val executionInput = ExecutionInput
-                .newExecutionInput(query)
-                .operationName(operationName)
-                .variables(variables)
-                .build()
-            val executionResult = graphQL.execute(executionInput)
-            call.respondOutputStream(contentType = ContentType.Application.Json, status = HttpStatusCode.OK) {
-                executionResult.toSpecification().writeAsJsonTo(OutputStreamWriter(this, UTF8))
+            try {
+                val map: Map<String, Any> =
+                    InputStreamReader(call.request.receiveChannel().toInputStream(), UTF8).jsonToMap()
+                val query = map["query"] as? String
+                val variables = map["variables"] as? Map<String, Any> ?: mapOf()
+                val operationName = map["operationName"] as? String
+                val executionInput = ExecutionInput
+                    .newExecutionInput(query)
+                    .operationName(operationName)
+                    .variables(variables)
+                    .build()
+                val executionResult = graphQL.execute(executionInput)
+                call.respondOutputStream(contentType = ContentType.Application.Json, status = HttpStatusCode.OK) {
+                    OutputStreamWriter(this, UTF8).use { executionResult.toSpecification().writeAsJsonTo(it) }
+                }
+            } catch (t: Exception) {
+                t.printStackTrace()
             }
         }
         get("/schema") {
