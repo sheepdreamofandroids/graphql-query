@@ -33,7 +33,8 @@ class SchemaFunction<R : Any>(
     private val signatureName = "${contextQlType.makeName()}__to__" + resultClass.simpleName
 
     val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
-    val operators: Map<String, Operator<R>> = ops.applicableTo(resultClass, contextQlType).associateBy { it.name }
+    private val operators: Map<String, Operator<R>> =
+        ops.applicableTo(resultClass, contextQlType).associateBy { it.name }
 
     val parmQlType: GraphQLInputType by lazy {
         // lazy to avoid infinite recursion
@@ -58,7 +59,7 @@ class SchemaFunction<R : Any>(
                     ?.invoke(it.value, this)
             }
             ?.let { effectiveOps ->
-                when (effectiveOps.orEmpty().size) {
+                when (effectiveOps.size) {
                     0 -> throw GraphQlQueryException("Empty object", value.sourceLocation)
                     1 -> effectiveOps[0]
                     else -> {
@@ -78,12 +79,12 @@ class SchemaFunction<R : Any>(
         function(type, kClass).also { println("Got $this") } as SchemaFunction<T>
 }
 
-class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
+class AddQueryToSchema(private val operators: OperatorRegistry) : GraphQLTypeVisitorStub() {
     val functions: MutableMap<String, SchemaFunction<*>> = mutableMapOf()
     fun <R : Any> functionFor(contextType: GraphQLOutputType, resultClass: KClass<R>): SchemaFunction<R> {
         //TODO key must contain result type
-        return functions.computeIfAbsent(contextType.makeName()) { _ ->
-            SchemaFunction<R>(
+        return functions.computeIfAbsent(contextType.makeName()) {
+            SchemaFunction(
                 contextType,
                 resultClass,
                 operators,
@@ -104,30 +105,28 @@ class AddQueryToSchema(val operators: OperatorRegistry) : GraphQLTypeVisitorStub
                     val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
                         .argument { arg ->
                             arg.name("_filter")
-                            val filterFunction = functionFor(predicateType, Boolean::class)
-                            // the following two lines add the type as an additional type to the schema this is because
-                            // everywhere only the reference is used
-                            context.addAdditionalTypes(functions.values.map { it.parmQlType })
-//                            println("Added type ${filterFunction.parmQlType}")
-                            arg.type(filterFunction.ref)
+                            arg.type(functionFor(predicateType, Boolean::class).ref)
                         }
                         // can't use a directive because it's declared globally and
                         // therefore the argument type is the same everywhere
                         .build()
                     println("into $newNode")
+                    updateAdditionalTypes(context)
                     return TreeTransformerUtil.changeNode(context, newNode)
                 }
             }
         }
+        updateAdditionalTypes(context)
         return super.visitGraphQLFieldDefinition(node, context)
     }
 
-    /**Add the type as an additional type to the schema because everywhere only the reference is used.
-     * Otherwise the reference would point to nothing.*/
-    private fun TraverserContext<GraphQLSchemaElement>.addAdditionalTypes(additionalTypes: List<GraphQLInputType>) {
-        val root = parentNodes.last()
+    /** Function types are always referenced by name. Therefore they have to be added as additional types to the schema
+     * or else those names would be unknown.
+     */
+    private fun updateAdditionalTypes(context: TraverserContext<GraphQLSchemaElement>) {
+        val root = context.parentNodes.last()
         root.withNewChildren(root.childrenWithTypeReferences.transform {
-            it.children("addTypes", additionalTypes)
+            it.children("addTypes", functions.values.map { it.parmQlType })
         })
     }
 
@@ -159,7 +158,7 @@ fun GraphQLType.effectiveType(): GraphQLType = when (this) {
 
 fun GraphQLType.testableType(): GraphQLOutputType? = when (this) {
     is GraphQLNonNull -> wrappedType.testableType()
-    is GraphQLList -> this;
+    is GraphQLList -> this
     is GraphQLObjectType -> this
     is GraphQLEnumType -> this
     else -> null

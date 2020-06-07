@@ -3,15 +3,6 @@ package net.bloemsma.graphql.query
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import graphql.ExecutionInput
-import graphql.GraphQL
-import graphql.schema.DataFetcher
-import graphql.schema.FieldCoordinates
-import graphql.schema.GraphQLCodeRegistry
-import graphql.schema.GraphQLSchema
-import graphql.schema.idl.RuntimeWiring
-import graphql.schema.idl.SchemaGenerator
-import graphql.schema.idl.SchemaParser
-import graphql.schema.idl.SchemaPrinter
 import io.ktor.application.call
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -36,6 +27,8 @@ fun main() {
 
 private val UTF8 = Charsets.UTF_8
 
+private val testSchema = TestSchema()
+
 private val server = embeddedServer(CIO, 8080) {
     routing {
         get("/") {
@@ -56,7 +49,7 @@ private val server = embeddedServer(CIO, 8080) {
                     .operationName(operationName)
                     .variables(variables)
                     .build()
-                val executionResult = graphQL.execute(executionInput)
+                val executionResult = testSchema.graphQL.execute(executionInput)
                 call.respondOutputStream(contentType = ContentType.Application.Json, status = HttpStatusCode.OK) {
                     OutputStreamWriter(this, UTF8).use { executionResult.toSpecification().writeAsJsonTo(it) }
                 }
@@ -65,58 +58,11 @@ private val server = embeddedServer(CIO, 8080) {
             }
         }
         get("/schema") {
-            call.respondText { schemaPrinter.print(oldSchema) }
+            call.respondText { testSchema.schemaPrinter.print(testSchema.oldSchema) }
         }
     }
 }
 
-
-private val originalSchema = """
-                type Query {
-                  myresult(simpleArg: String): [result]
-                }
-        
-                type result {
-                  b: Byte
-                  x: String
-                  y: Int
-                  z: [foo]
-                }
-                
-                type foo {
-                  bar: Int
-                  }
-                """
-private val oldSchema: GraphQLSchema = SchemaGenerator().makeExecutableSchema(
-    SchemaParser().parse(originalSchema),
-    RuntimeWiring.newRuntimeWiring().codeRegistry(
-        GraphQLCodeRegistry.newCodeRegistry().dataFetcher(
-            FieldCoordinates.coordinates("Query", "myresult"),
-            DataFetcher { _ -> unfilteredResult })
-    ).build()
-)
-
-private val unfilteredResult = listOf(
-    mapOf("x" to "wai", "y" to 3, "z" to listOf(mapOf("bar" to 5))),
-    mapOf("x" to "iks", "y" to 5, "z" to listOf(mapOf("bar" to 6)))
-)
-
-private val schemaPrinter = SchemaPrinter(
-    SchemaPrinter.Options
-        .defaultOptions()
-        .includeDirectives(false)
-        .includeIntrospectionTypes(false)
-)
-
-private val graphQL: GraphQL = GraphQL
-    .newGraphQL(oldSchema)
-    .instrumentation(
-        FilterInstrumentation(
-            ops, "_filter", SchemaPrinter(
-                SchemaPrinter.Options.defaultOptions().includeDirectives(false).includeIntrospectionTypes(false)
-            )
-        )
-    ).build()
 
 private fun getVariables(variables: Any?): Map<String, Any> {
     if (variables is Map<*, *>) {

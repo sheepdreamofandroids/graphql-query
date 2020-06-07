@@ -21,9 +21,9 @@ import java.util.concurrent.ConcurrentMap
  * 3 when the query is actually executed, retrieve that ResultModifier from the cache and apply it to the result. This happens for every query.
  * */
 class FilterInstrumentation(
-    val ops: OperatorRegistry,
-    val filterName: String,
-    val schemaPrinter: SchemaPrinter
+    private val ops: OperatorRegistry,
+    private val filterName: String,
+    private val schemaPrinter: SchemaPrinter
 ) : SimpleInstrumentation() {
     // this could be an async loading cache, parsing the query while the data is being retrieved
     private val query2ResultModifier: ConcurrentMap<String, ResultModifier> = ConcurrentHashMap()
@@ -40,16 +40,16 @@ class FilterInstrumentation(
     }
 
 
-    val noModification: ResultModifier = { _: Result, _: Variables -> }.showingAs { "no modification" }
-    private val analysis = AddQueryToSchema(ops)
+    private val noModification: ResultModifier = { _: Result, _: Variables -> }.showingAs { "no modification" }
+    private val addQueryToSchema = AddQueryToSchema(ops)
 
     /** Extends schema with filter parameters on lists. */
     override fun instrumentSchema(
         schema: GraphQLSchema?,
         parameters: InstrumentationExecutionParameters?
-    ): GraphQLSchema = SchemaTransformer.transformSchema(schema, analysis)
+    ): GraphQLSchema = SchemaTransformer.transformSchema(schema, addQueryToSchema)
         .also {
-            println("Found these functions: ${analysis.functions}")
+            println("Found these functions: ${addQueryToSchema.functions}")
             println(schemaPrinter.print(it))
         }
 
@@ -57,7 +57,7 @@ class FilterInstrumentation(
         executionResult: ExecutionResult,
         parameters: InstrumentationExecutionParameters
     ): CompletableFuture<ExecutionResult> {
-        query2ResultModifier.get(parameters.query)
+        query2ResultModifier[parameters.query]
             ?.invoke(executionResult.getData(), parameters.variables) // destructively modify result
         return super.instrumentExecutionResult(executionResult, parameters)
     }
@@ -73,13 +73,11 @@ class FilterInstrumentation(
                 schema.queryType.getFieldDefinition(field.name)
                     ?.type
                     ?.let { type ->
-                        val modifier = modifierFor(field, type)
-                            ?.let { mod ->
-                                { r: Result, v: Variables ->
-                                    mod.invoke(r.getField(field.name), v)
-                                }
+                        modifierFor(field, type)?.let { mod ->
+                            { r: Result, v: Variables ->
+                                r.getField(field.name)?.let { mod(it, v) }
                             }
-                        modifier
+                        } as ResultModifier?
                     }
             }
 
@@ -87,7 +85,7 @@ class FilterInstrumentation(
         return when (type) {
             is GraphQLList ->
                 field.arguments.firstOrNull { it.name == filterName }?.let {
-                    analysis
+                    addQueryToSchema
                         .functionFor(type.wrappedType as GraphQLOutputType, Boolean::class)
                         .compile(null, it.value)
                         .also { println("Filtering ${field.name} on $it") }
@@ -112,7 +110,7 @@ class FilterInstrumentation(
                         else -> {
                             val modifier: ResultModifier = { context: Result, variables: Variables ->
                                 for ((name, modifier) in fieldModifiers) {
-                                    modifier(context.getField(name), variables)
+                                    context.getField(name)?.let { modifier(it, variables) }
                                 }
                             }
                             modifier
@@ -124,7 +122,7 @@ class FilterInstrumentation(
     }
 }
 
-fun Result.getField(name: String): Any =
+fun Result.getField(name: String): Any? =
     PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 

@@ -39,7 +39,7 @@ class SimpleOperator<R : Any>(
     val resultClass: KClass<*>,
     val contextType: GraphQLOutputType,
     val parameterType: GraphQLInputType,
-    val description: String? = null,
+    private val description: String? = null,
     override val compile: (param: Query, schemaFunction: SchemaFunction<R>) -> QueryFunction<R>
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean {
@@ -60,10 +60,10 @@ class SimpleOperator<R : Any>(
     override fun toString() = "$name($contextType, $parameterType)->$resultClass // $description"
 }
 
-fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit) =
+fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit): GraphQLObjectType.Builder =
     field { it.apply(block) }
 
-fun GraphQLInputObjectType.Builder.addField(block: GraphQLInputObjectField.Builder.() -> Unit) =
+fun GraphQLInputObjectType.Builder.addField(block: GraphQLInputObjectField.Builder.() -> Unit): GraphQLInputObjectType.Builder =
     field { it.apply(block) }
 
 inline fun <reified R : Any, reified P : Any, reified C : Any> operator(
@@ -231,7 +231,7 @@ class AndOfFields : Operator<Boolean> {
 
     override fun <T : Any> produce(resultType: KClass<T>, contextType: GraphQLOutputType): Iterable<Operator<T>> {
         return (contextType as? GraphQLObjectType)?.let { graphQLObjectType ->
-            graphQLObjectType.fieldDefinitions.map { ObjectFieldOp(graphQLObjectType, it, resultType) as Operator<T> }
+            graphQLObjectType.fieldDefinitions.map { ObjectFieldOp(graphQLObjectType, it, resultType) }
         } ?: emptyList()
     }
 
@@ -260,7 +260,7 @@ class AndOfFields : Operator<Boolean> {
                     Boolean::class
                 )
                 val predicate: QueryFunction<Boolean> = schemaFunction1
-                    .compile(fieldName, objectField.value);
+                    .compile(fieldName, objectField.value)
                 val qPredicate: QueryPredicate = { c, v ->
                     predicate(c.getField(fieldName), v)
                 }
@@ -279,7 +279,7 @@ class AndOfFields : Operator<Boolean> {
 }
 
 class ObjectFieldOp<R : Any>(
-    val graphQLObjectType: GraphQLObjectType,
+    private val graphQLObjectType: GraphQLObjectType,
     fieldDefinition: GraphQLFieldDefinition,
     resultType: KClass<R>
 ) : Operator<R> {

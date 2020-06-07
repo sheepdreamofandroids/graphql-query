@@ -11,12 +11,7 @@ typealias Query = Value<*>
 
 // modifying the query result is destructive
 typealias  ResultModifier = (Result, Variables) -> Unit
-typealias  XPredicate = (Result) -> Boolean
 
-typealias QueryPredicate = QueryFunction<Boolean>
 typealias QueryFunction<R> = (Result, Variables) -> R
-//interface QueryTimeFunction<R> : Function2<Any, Variables, R>
-//typealias QueryTimePredicate = (Any, Variables) -> Boolean
-// calculates a modifier from a query
-//typealias FilterParser = (Value<*>) -> ResultModifier
+typealias QueryPredicate = QueryFunction<Boolean>
 

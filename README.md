@@ -1,7 +1,7 @@
 # GraphQL-Query
 Instrument a graphql-java server with filters on lists
 
-This is an extension to graphql-java that adds a parameter to each list field that allows to filter the elements of that list using a simple predicate.
+This is an extension to the excellent [graphql-java](https://github.com/graphql-java/graphql-java) that adds a parameter to each list field that allows to filter the elements of that list using a simple predicate.
 
 Given this schema:
 ```
