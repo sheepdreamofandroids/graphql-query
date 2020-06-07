@@ -63,7 +63,7 @@ class SchemaFunction<R : Any>(
                     0 -> throw GraphQlQueryException("Empty object", value.sourceLocation)
                     1 -> effectiveOps[0]
                     else -> {
-                        { c: Result, v: Variables ->
+                        { c: Result?, v: Variables ->
                             // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
                             effectiveOps.all { it(c, v) as Boolean } as R
                         }.showingAs { effectiveOps.joinToString(prefix = "AND(", separator = ", ", postfix = ")") }
@@ -71,9 +71,6 @@ class SchemaFunction<R : Any>(
                 }
             }
             ?: throw GraphQlQueryException("Empty object", value.sourceLocation)
-//}
-//                    ?.invoke(value, this)
-//                    ?: throw Exception("Oops")
 
     fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
         function(type, kClass).also { println("Got $this") } as SchemaFunction<T>
@@ -89,7 +86,6 @@ class AddQueryToSchema(private val operators: OperatorRegistry) : GraphQLTypeVis
                 resultClass,
                 operators,
                 { a: GraphQLOutputType, b: KClass<*> -> functionFor(a, b) }
-//                this::functionFor as (GraphQLOutputType, KClass<*>) -> SchemaFunction<*>
             )
         } as SchemaFunction<R>
     }

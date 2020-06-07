@@ -142,7 +142,7 @@ fun <C : Any, P : Any, R : Any> simpleOperator(
         contextType = contextClass.toGraphQlOutput(),
         parameterType = parameterClass.toGraphQlInput(),
         compile = { param: Query, _ ->
-            { c: Result, v: Variables ->
+            { c: Result?, v: Variables ->
                 body(
                     fromContext(c) ?: throw Exception("Cannot convert from $c to $contextClass"),
                     valueOrVariable(fromParam, param, v, parameterClass)
@@ -220,7 +220,7 @@ class Not : Operator<Boolean> {
     override val compile = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
         val innerPred =
             schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class).compile(null, param)
-        ;{ r: Result, v: Variables -> !innerPred(r, v) }
+        ;{ r: Result?, v: Variables -> !innerPred(r, v) }
     }
 
 }
@@ -262,14 +262,14 @@ class AndOfFields : Operator<Boolean> {
                 val predicate: QueryFunction<Boolean> = schemaFunction1
                     .compile(fieldName, objectField.value)
                 val qPredicate: QueryPredicate = { c, v ->
-                    predicate(c.getField(fieldName), v)
+                    predicate(c?.getField(fieldName), v)
                 }
                 qPredicate
 //                    schemaFunction.operators.find { it.name == objectField.name }
 //                        ?.compile?.invoke(objectField.value, schemaFunction)
             } ?: throw Exception("Must be object")
         ;
-        { context: Result, variables: Variables -> tests.all { it.invoke(context, variables) } }
+        { context: Result?, variables: Variables -> tests.all { it.invoke(context, variables) } }
     }
 
 
@@ -314,8 +314,8 @@ class ObjectFieldOp<R : Any>(
             )
             .compile(null, param)
             .let { func ->
-                { c: Result, v: Variables ->
-                    func(c.getField(name), v)
+                { c: Result?, v: Variables ->
+                    func(c?.getField(name), v)
                 }.showingAs { "($name) " }
             }
     }

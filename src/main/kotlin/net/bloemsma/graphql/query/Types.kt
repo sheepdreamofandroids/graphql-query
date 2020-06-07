@@ -12,6 +12,6 @@ typealias Query = Value<*>
 // modifying the query result is destructive
 typealias  ResultModifier = (Result, Variables) -> Unit
 
-typealias QueryFunction<R> = (Result, Variables) -> R
+typealias QueryFunction<R> = (Result?, Variables) -> R
 typealias QueryPredicate = QueryFunction<Boolean>
 
