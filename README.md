@@ -1,3 +1,4 @@
+![Build master](https://github.com/sheepdreamofandroids/graphql-query/workflows/Build%20master/badge.svg)
 # GraphQL-Query
 Instrument a graphql-java server with filters on lists
 
