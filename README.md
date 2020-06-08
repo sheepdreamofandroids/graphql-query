@@ -44,3 +44,4 @@ val graphQL: GraphQL = GraphQL
 - No pagination.
 - The code needs some serious cleanup!
 - It should be easier to add new operators.
+- NOT ready for production.
