@@ -28,4 +28,19 @@ You could write the query:
 ```
 This would retrieve the list of results as usual and then remove everything where int is not greater than 15 or string not equal to "hello". 
 
-See in the file "TestSchema.kt" how to add FilterInstrumentation to your GraphQL object.
+See in the file "TestSchema.kt" how to add FilterInstrumentation to your GraphQL object:
+```kotlin
+val graphQL: GraphQL = GraphQL
+    .newGraphQL(oldSchema)
+    .instrumentation(FilterInstrumentation(ops, "_filter", schemaPrinter))
+    .build()
+```
+
+## Limitations
+- Fields used in the _filter argument have to be selected, either directly or using a fragment, using their original name. Otherwise the data to test on is simply not found.
+- No calculations can be done, only comparisons of fields against literals.
+- There are very few operators.
+- No aggregations.
+- No pagination.
+- The code needs some serious cleanup!
+- It should be easier to add new operators.

@@ -362,8 +362,13 @@ class OrOfFields : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>) -> QueryPredicate
+    override val compile
         get() = TODO("Not yet implemented")
+//            = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
+//        param.
+//        { r: Result, v: Variables -> true } as QueryPredicate
+//    }
+
     override val name: String = "_OR"
 }
 
