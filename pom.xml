@@ -10,9 +10,11 @@
     <packaging>jar</packaging>
 
     <name>GraphQL Query</name>
+    <description>Instrument a graphql-java server with filters on lists.</description>
+    <url>https://github.com/sheepdreamofandroids/graphql-query</url>
 
     <scm>
-        <url>https://github.com/sheepdreamofandroids/graphql-query</url>
+        <url>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</url>
         <developerConnection>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</developerConnection>
         <connection>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</connection>
         <tag>HEAD</tag>
@@ -181,6 +183,15 @@
                 </repository>
             </distributionManagement>
 
+            <pluginRepositories>
+                <!-- for dokka -->
+                <pluginRepository>
+                    <id>jcenter</id>
+                    <name>JCenter</name>
+                    <url>https://jcenter.bintray.com/</url>
+                </pluginRepository>
+            </pluginRepositories>
+
             <build>
                 <plugins>
                     <plugin>
@@ -192,6 +203,20 @@
                                 <id>attach-sources</id>
                                 <goals>
                                     <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.jetbrains.dokka</groupId>
+                        <artifactId>dokka-maven-plugin</artifactId>
+                        <version>0.10.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>javadocJar</goal>
                                 </goals>
                             </execution>
                         </executions>

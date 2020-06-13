@@ -29,6 +29,9 @@ You could write the query:
 ```
 This would retrieve the list of results as usual and then remove everything where int is not greater than 15 or string not equal to "hello". 
 
+## Usage
+GraphQL-Query is available from maven central: https://search.maven.org/artifact/net.bloemsma.graphql.query/graphql-query
+
 See in the file "TestSchema.kt" how to add FilterInstrumentation to your GraphQL object:
 ```kotlin
 val graphQL: GraphQL = GraphQL

@@ -348,51 +348,6 @@ class ObjectFieldOp<R : Any>(
 
 }
 
-class OrOfFields : Operator<Boolean> {
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType == Boolean::class && contextType is GraphQLObjectType
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        query: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        query.field {
-            it.name("_OR").type(GraphQLList(function(from, Boolean::class).ref))
-        }
-    }
-
-    override val compile
-        get() = TODO("Not yet implemented")
-//            = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
-//        param.
-//        { r: Result, v: Variables -> true } as QueryPredicate
-//    }
-
-    override val name: String = "_OR"
-}
-
-class AnyOfList : Operator<Boolean> {
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType == Boolean::class && contextType is GraphQLList
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        query: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        query.field {
-            (from as GraphQLList).wrappedType.testableType()?.run {
-                it.name("any").type(function(this, Boolean::class).ref)
-            }
-        }
-    }
-
-    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>) -> QueryPredicate
-        get() = TODO("Not yet implemented")
-    override val name: String = "_ANY"
-}
-
 fun <T : Any> KClass<T>.toGraphQlOutput(): GraphQLScalarType = toGraphQlInput()
 
 fun <T : Any> KClass<T>.toGraphQlInput(): GraphQLScalarType =
