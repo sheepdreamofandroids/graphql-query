@@ -17,7 +17,7 @@ class AnyOfList : Operator<Boolean> {
     ) {
         query.field {
             (from as GraphQLList).wrappedType.testableType()?.run {
-                it.name("any").type(function(this, Boolean::class).ref)
+                it.name("any").type(function(this, Boolean::class).reference())
             }
         }
     }

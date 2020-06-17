@@ -18,7 +18,7 @@ class OrOfFields : Operator<Boolean> {
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
         query.field {
-            it.name("_OR").type(GraphQLList(function(from, Boolean::class).ref))
+            it.name("_OR").type(GraphQLList(function(from, Boolean::class).reference()))
         }
     }
 

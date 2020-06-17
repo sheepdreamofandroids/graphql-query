@@ -22,14 +22,12 @@ import java.io.Reader
 import java.io.Writer
 
 fun main() {
-    server.start(wait = true)
+    server().start(wait = true)
 }
 
 private val UTF8 = Charsets.UTF_8
 
-private val testSchema = TestSchema()
-
-private val server = embeddedServer(CIO, 8080) {
+fun server(testSchema: TestSchema = TestSchema()) = embeddedServer(CIO, 8080) {
     routing {
         get("/") {
             call.resolveResource(
@@ -53,7 +51,7 @@ private val server = embeddedServer(CIO, 8080) {
                 call.respondOutputStream(contentType = ContentType.Application.Json, status = HttpStatusCode.OK) {
                     OutputStreamWriter(this, UTF8).use { executionResult.toSpecification().writeAsJsonTo(it) }
                 }
-            } catch (t: Exception) {
+            } catch (t: Throwable) {
                 t.printStackTrace()
             }
         }

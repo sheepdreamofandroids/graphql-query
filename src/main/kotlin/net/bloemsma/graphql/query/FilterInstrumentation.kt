@@ -45,13 +45,10 @@ class FilterInstrumentation(
 
     /** Extends schema with filter parameters on lists. */
     override fun instrumentSchema(
-        schema: GraphQLSchema?,
-        parameters: InstrumentationExecutionParameters?
-    ): GraphQLSchema = SchemaTransformer.transformSchema(schema, addQueryToSchema)
-        .also {
-            println("Found these functions: ${addQueryToSchema.functions}")
-            println(schemaPrinter.print(it))
-        }
+        schema: GraphQLSchema,
+        parameters: InstrumentationExecutionParameters
+    ): GraphQLSchema = addQueryToSchema.transform2(schema)
+
 
     override fun instrumentExecutionResult(
         executionResult: ExecutionResult,

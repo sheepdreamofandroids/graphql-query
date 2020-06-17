@@ -5,14 +5,10 @@ import graphql.schema.DataFetcher
 import graphql.schema.FieldCoordinates
 import graphql.schema.GraphQLCodeRegistry
 import graphql.schema.GraphQLSchema
-import graphql.schema.idl.RuntimeWiring
-import graphql.schema.idl.SchemaGenerator
-import graphql.schema.idl.SchemaParser
-import graphql.schema.idl.SchemaPrinter
+import graphql.schema.idl.*
 
-class TestSchema {
-
-    private val originalSchema = """
+open class TestSchema(
+    val originalSchema: String = """
                 type Query {
                   result(count: Int): [result]
                 }
@@ -23,15 +19,11 @@ class TestSchema {
                   string(plus: Int, times: Int, template: String): String
                   intArray(plus: Int, times: Int, count: Int, step: Int): [Int]
                 }
-                """
-    val s = """
-                  i: Int
-                  f: Float
-                  as: [String]
-                  ar: [result]
-"""
+                """,
+    val types: TypeDefinitionRegistry = SchemaParser().parse(originalSchema)
+) {
     val oldSchema: GraphQLSchema = SchemaGenerator().makeExecutableSchema(
-        SchemaParser().parse(originalSchema),
+        types,
         RuntimeWiring.newRuntimeWiring().codeRegistry(
             GraphQLCodeRegistry.newCodeRegistry()
                 .dataFetcher(

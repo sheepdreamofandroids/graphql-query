@@ -213,7 +213,7 @@ class Not : Operator<Boolean> {
         into.field {
             it.name("not")
             it.description("Negates it's argument.")
-            it.type(function(from, Boolean::class).ref)
+            it.type(function(from, Boolean::class).reference())
         }
     }
 
@@ -244,7 +244,7 @@ class AndOfFields : Operator<Boolean> {
         (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
             into.field {
                 it.name(field.name)
-                it.type(function(field.type, Boolean::class).ref)
+                it.type(function(field.type, Boolean::class).reference())
             }
 
         }
@@ -296,7 +296,7 @@ class ObjectFieldOp<R : Any>(
         (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
             into.field {
                 it.name(field.name)
-                it.type(function(field.type, Boolean::class).ref)
+                it.type(function(field.type, Boolean::class).reference())
             }
 
         }
