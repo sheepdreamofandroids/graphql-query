@@ -14,7 +14,7 @@ open class TestSchema(
                 }
         
                 type result {
-                  byte(plus: Byte, times: Byte): Byte
+                  int(plus: Int, times: Int): Int
                   "calculate a number and inserts it into the template replacing {}"
                   string(plus: Int, times: Int, template: String): String
                   intArray(plus: Int, times: Int, count: Int, step: Int): [Int]
@@ -33,11 +33,11 @@ open class TestSchema(
                         (0..count - 1).toList()
                     })
                 .dataFetcher(
-                    FieldCoordinates.coordinates("result", "byte"),
+                    FieldCoordinates.coordinates("result", "int"),
                     DataFetcher { env ->
-                        val plus: Byte = env.getArgument("plus") ?: 0
-                        val times: Byte = env.getArgument("times") ?: 1
-                        (env.getSource<Int>() * times + plus).toByte()
+                        val plus: Int = env.getArgument("plus") ?: 0
+                        val times: Int = env.getArgument("times") ?: 1
+                        (env.getSource<Int>() * times + plus).toInt()
                     })
                 .dataFetcher(
                     FieldCoordinates.coordinates("result", "string"),
@@ -59,11 +59,6 @@ open class TestSchema(
                         (0..count - 1).map { it * step + start }
                     })
         ).build()
-    )
-
-    val unfilteredResult = listOf(
-        mapOf("x" to "wai", "y" to 3, "z" to listOf(mapOf("bar" to 5))),
-        mapOf("x" to "iks", "y" to 5, "z" to listOf(mapOf("bar" to 6)))
     )
 
     val schemaPrinter = SchemaPrinter(

@@ -70,6 +70,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
 
     fun transform2(schema: GraphQLSchema) = object : SchemaChanger(schema) {
         override fun GraphQLFieldDefinition.Builder.change(original: GraphQLFieldDefinition) {
+            this.changeDefault(original)
             original.type.filterableType()?.let { listType: GraphQLList ->
                 listType.wrappedType.testableType()?.let { predicateType ->
                     if (!predicateType.isBuiltInReflection()) {

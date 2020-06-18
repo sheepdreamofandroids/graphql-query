@@ -189,9 +189,6 @@ val ops = OperatorRegistry(
     }
             + Not()
             + AndOfFields()
-//            + AndOfFields()
-//        +AnyOfList()
-//            + OrOfFields()
 
 )
 

@@ -3,25 +3,27 @@ package net.bloemsma.graphql.query
 import graphql.schema.*
 import graphql.schema.GraphQLFieldDefinition.newFieldDefinition
 import graphql.schema.GraphQLList.list
+import graphql.schema.GraphQLNonNull.nonNull
 import graphql.schema.GraphQLSchema.newSchema
 import graphql.schema.idl.SchemaPrinter
 
 open abstract class SchemaChanger(val schema: GraphQLSchema) {
-    val typesToModify: MutableSet<GraphQLNamedType> = schema.allTypesAsList.toMutableSet()
-    val modifiedTypes: MutableMap<String, GraphQLTypeReference> = mutableMapOf()
+    val originalObjects: MutableMap<String, GraphQLObjectType> = mutableMapOf()
+    val referencedObjects: MutableMap<String, GraphQLObjectType> = mutableMapOf()
+    val references: MutableMap<String, GraphQLTypeReference> = mutableMapOf()
     abstract fun additionalTypes(): Set<GraphQLType>
 
     fun GraphQLType.change(): GraphQLType = when (this) {
-        is GraphQLNamedType -> {
-            typesToModify.add(this)
-            modifiedTypes.computeIfAbsent(name) { GraphQLTypeReference.typeRef(name) }
+        is GraphQLObjectType -> {
+            originalObjects[name] = this
+            references.computeIfAbsent(name) { GraphQLTypeReference.typeRef(name) }
         }
-        else -> this
-    }
+        is GraphQLList -> list(wrappedType.change())
+        is GraphQLNonNull -> nonNull(wrappedType.change())
+        is GraphQLScalarType -> this
+        is GraphQLEnumType -> this
 
-    fun GraphQLNamedType.change(): GraphQLNamedType = when (this) {
-        is GraphQLObjectType -> change()
-        else -> this
+        else -> throw Exception("extend me!")
     }
 
     open fun change() = newSchema(schema).change().build().also {
@@ -30,11 +32,18 @@ open abstract class SchemaChanger(val schema: GraphQLSchema) {
 
     open fun GraphQLSchema.Builder.change(): GraphQLSchema.Builder = apply {
         clearAdditionalTypes()
-        query(schema.queryType?.change())
-        mutation(schema.mutationType?.change())
-        subscription(schema.subscriptionType?.change())
-        typesToModify.forEach { it.change() }
-        additionalTypes((modifiedTypes - schema.queryType?.name - schema.mutationType?.name - schema.subscriptionType?.name).values.toSet() + additionalTypes())
+        val query = schema.queryType?.change()
+        query(query)
+        val mutation = schema.mutationType?.change()
+        mutation(mutation)
+        val subscription = schema.subscriptionType?.change()
+        subscription(subscription)
+        while (originalObjects.size > referencedObjects.size) {
+            (originalObjects - referencedObjects.keys).forEach {
+                referencedObjects[it.key] = it.value.change()
+            }
+        }
+        additionalTypes(referencedObjects.values.toSet() + additionalTypes())
     }
 
 
@@ -47,6 +56,11 @@ open abstract class SchemaChanger(val schema: GraphQLSchema) {
 
     open fun GraphQLFieldDefinition.change() = newFieldDefinition(this).apply { this.change(this@change) }.build()
     open fun GraphQLFieldDefinition.Builder.change(original: GraphQLFieldDefinition) {
+        changeDefault(original)
+    }
+
+    // Ugly workaround for https://youtrack.jetbrains.com/issue/KT-11488
+    protected fun GraphQLFieldDefinition.Builder.changeDefault(original: GraphQLFieldDefinition) {
         type(original.type.change() as GraphQLOutputType)
     }
 
