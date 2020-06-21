@@ -82,9 +82,10 @@ class FilterInstrumentation(
         return when (type) {
             is GraphQLList ->
                 field.arguments.firstOrNull { it.name == filterName }?.let {
+                    val contextType = type.wrappedType as GraphQLOutputType
                     addQueryToSchema
-                        .functionFor(type.wrappedType as GraphQLOutputType, Boolean::class)
-                        .compile(null, it.value)
+                        .functionFor(contextType, Boolean::class)
+                        .compile(null, it.value,contextType)
                         .also { println("Filtering ${field.name} on $it") }
                 }?.let { pred: QueryPredicate ->
                     val modifier: ResultModifier = { context: Result, variables: Variables ->

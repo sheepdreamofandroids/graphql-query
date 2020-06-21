@@ -1,10 +1,7 @@
 package net.bloemsma.graphql.query
 
 import graphql.language.ObjectValue
-import graphql.schema.GraphQLInputObjectType
-import graphql.schema.GraphQLInputType
-import graphql.schema.GraphQLOutputType
-import graphql.schema.GraphQLTypeReference
+import graphql.schema.*
 import kotlin.reflect.KClass
 
 /** Represents a function for one particular type in the schema.*/
@@ -53,12 +50,12 @@ class SchemaFunction<R : Any>(
         return "Function for $signatureName"
     }
 
-    fun compile(name: String?, value: Query): QueryFunction<R> =
+    fun compile(name: String?, value: Query, context: GraphQLOutputType): QueryFunction<R> =
         (value as? ObjectValue)?.objectFields
-            ?.mapNotNull {
-                operators[it.name]
+            ?.mapNotNull { dataField ->
+                operators[dataField.name]
                     ?.compile
-                    ?.invoke(it.value, this)
+                    ?.invoke(dataField.value, this, context)
             }
             ?.let { effectiveOps ->
                 when (effectiveOps.size) {
@@ -83,3 +80,6 @@ class SchemaFunction<R : Any>(
     fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
         function(type, kClass).also { println("Got $this") } as SchemaFunction<T>
 }
+
+private fun GraphQLOutputType.objectField(name: String): GraphQLFieldDefinition? =
+    (this as? GraphQLObjectType)?.fieldDefinitions?.find { it.name == name }

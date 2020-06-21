@@ -1,9 +1,9 @@
 package net.bloemsma.graphql.query
 
 import graphql.Scalars
-import graphql.language.ObjectValue
 import graphql.language.VariableReference
 import graphql.schema.*
+import net.bloemsma.graphql.query.operators.AndOfFields
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
@@ -16,6 +16,7 @@ class OperatorRegistry(private val ops: Iterable<Operator<*>>) {
 }
 
 //TODO split into Operator (implementation) and OperatorGroup (produces Operator)
+// Or better, make the simple case (group of 1) a subtype of Operator
 interface Operator<R : Any> {
     val name: String
     fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean
@@ -28,7 +29,7 @@ interface Operator<R : Any> {
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     )
 
-    val compile: (param: Query, schemaFunction: SchemaFunction<R>) -> QueryFunction<R>?
+    val compile: (param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType) -> QueryFunction<R>?
 
     //    fun compile(expr: Value<*>): (Any) -> Any
     fun expand(): List<Operator<R>> = listOf(this)
@@ -40,7 +41,7 @@ class SimpleOperator<R : Any>(
     val contextType: GraphQLOutputType,
     val parameterType: GraphQLInputType,
     private val description: String? = null,
-    override val compile: (param: Query, schemaFunction: SchemaFunction<R>) -> QueryFunction<R>
+    override val compile: (param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType) -> QueryFunction<R>?
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean {
         return resultType == resultClass && this.contextType == contextType
@@ -141,7 +142,7 @@ fun <C : Any, P : Any, R : Any> simpleOperator(
         resultClass = resultClass,
         contextType = contextClass.toGraphQlOutput(),
         parameterType = parameterClass.toGraphQlInput(),
-        compile = { param: Query, _ ->
+        compile = { param: Query, _,_ ->
             { c: Result?, v: Variables ->
                 body(
                     fromContext(c) ?: throw Exception("Cannot convert from $c to $contextClass"),
@@ -195,155 +196,6 @@ val ops = OperatorRegistry(
 /** Binary (2 parameter), symmetric(both the same type) predicate*/
 private inline fun <reified T : Any> KClass<*>.bsp(name: String, noinline body: (T, T) -> Boolean) =
     simpleOperator(name, Boolean::class, this, this, body)
-
-class Not : Operator<Boolean> {
-    override val name = "not"
-
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType == Boolean::class
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        into: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        into.field {
-            it.name("not")
-            it.description("Negates it's argument.")
-            it.type(function(from, Boolean::class).reference())
-        }
-    }
-
-    override val compile = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
-        val innerPred =
-            schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class).compile(null, param)
-        ;{ r: Result?, v: Variables -> !innerPred(r, v) }
-    }
-
-}
-
-class AndOfFields : Operator<Boolean> {
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType == Boolean::class && contextType is GraphQLObjectType
-
-    override fun <T : Any> produce(resultType: KClass<T>, contextType: GraphQLOutputType): Iterable<Operator<T>> {
-        return (contextType as? GraphQLObjectType)?.let { graphQLObjectType ->
-            graphQLObjectType.fieldDefinitions.map { ObjectFieldOp(graphQLObjectType, it, resultType) }
-        } ?: emptyList()
-    }
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        into: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        into.description("This is true when all fields are true (AND).")
-        (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
-            into.field {
-                it.name(field.name)
-                it.type(function(field.type, Boolean::class).reference())
-            }
-
-        }
-    }
-
-    override val compile = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
-        val tests: List<QueryPredicate> =
-            (param as? ObjectValue)?.objectFields?.mapNotNull { objectField ->
-                val fieldName = objectField.name
-                val graphQLObjectType = schemaFunction.contextQlType as GraphQLObjectType
-                val schemaFunction1 = schemaFunction.functionFor(
-                    graphQLObjectType.getFieldDefinition(fieldName).type,
-                    Boolean::class
-                )
-                val predicate: QueryFunction<Boolean> = schemaFunction1
-                    .compile(fieldName, objectField.value)
-                val qPredicate: QueryPredicate = { c, v ->
-                    predicate(c?.getField(fieldName), v)
-                }
-                qPredicate
-//                    schemaFunction.operators.find { it.name == objectField.name }
-//                        ?.compile?.invoke(objectField.value, schemaFunction)
-            } ?: throw Exception("Must be object")
-        ;
-        { context: Result?, variables: Variables -> tests.all { it.invoke(context, variables) } }
-    }
-
-
-    //        get() = TODO("Not yet implemented")
-    override val name: String = "and of fields"
-
-}
-
-class ObjectFieldOp<R : Any>(
-    private val graphQLObjectType: GraphQLObjectType,
-    fieldDefinition: GraphQLFieldDefinition,
-    resultType: KClass<R>
-) : Operator<R> {
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-//        resultType == Boolean::class &&
-        contextType == graphQLObjectType
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        into: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        into.description("This is true when all fields are true (AND).")
-        (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
-            into.field {
-                it.name(field.name)
-                it.type(function(field.type, Boolean::class).reference())
-            }
-
-        }
-    }
-
-    override val compile = { param: Query, schemaFunction: SchemaFunction<R> ->
-//        (param as? ObjectValue)
-//            ?.objectFields
-//            ?.find { it.name == name }
-//            ?.let { field: ObjectField ->
-        schemaFunction
-            .functionFor(
-                graphQLObjectType.getFieldDefinition(name).type,
-                resultType
-            )
-            .compile(null, param)
-            .let { func ->
-                { c: Result?, v: Variables ->
-                    func(c?.getField(name), v)
-                }.showingAs { "($name) " }
-            }
-    }
-//            ;
-//            { context: Result, variables: Variables -> fn(context,variables) }
-//
-//            objectFields?.mapNotNull { objectField ->
-//                val fieldName = objectField.name
-//                val graphQLObjectType = schemaFunction.contextQlType as GraphQLObjectType
-//                val schemaFunction1 = schemaFunction.functionFor(
-//                    graphQLObjectType.getFieldDefinition(fieldName).type,
-//                    Boolean::class
-//                )
-//                val predicate: QueryFunction<Boolean> = schemaFunction1
-//                    .compile(fieldName, objectField.value);
-//                val qPredicate: QueryPredicate = { c, v ->
-//                    predicate(c.getField(fieldName), v)
-//                }
-//                qPredicate
-////                    schemaFunction.operators.find { it.name == objectField.name }
-////                        ?.compile?.invoke(objectField.value, schemaFunction)
-//            } ?: throw Exception("Must be object")
-//        ;
-//        { context: Result, variables: Variables -> tests.all { it.invoke(context, variables) } }
-//    }
-
-
-    //        get() = TODO("Not yet implemented")
-    override val name: String = fieldDefinition.name
-
-}
 
 fun <T : Any> KClass<T>.toGraphQlOutput(): GraphQLScalarType = toGraphQlInput()
 

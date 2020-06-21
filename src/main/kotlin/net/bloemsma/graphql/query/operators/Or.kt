@@ -5,6 +5,8 @@ import graphql.schema.GraphQLList
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
 import net.bloemsma.graphql.query.Operator
+import net.bloemsma.graphql.query.Query
+import net.bloemsma.graphql.query.QueryFunction
 import net.bloemsma.graphql.query.SchemaFunction
 import kotlin.reflect.KClass
 
@@ -22,7 +24,7 @@ class OrOfFields : Operator<Boolean> {
         }
     }
 
-    override val compile
+    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) -> QueryFunction<Boolean>?
         get() = TODO("Not yet implemented")
 //            = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
 //        param.
