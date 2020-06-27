@@ -4,24 +4,40 @@ import graphql.Scalars
 import graphql.language.VariableReference
 import graphql.schema.*
 import net.bloemsma.graphql.query.operators.AndOfFields
+import net.bloemsma.graphql.query.operators.NonNull
+import net.bloemsma.graphql.query.operators.Not
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
 
-class OperatorRegistry(private val ops: Iterable<Operator<*>>) {
+class OperatorRegistry(private val ops: Iterable<OperatorProducer>) {
     fun <R : Any> applicableTo(resultType: KClass<R>, context: GraphQLOutputType): Iterable<Operator<R>> =
         ops.flatMap {
-            it.produce(resultType, context)
+            val produce: Iterable<Operator<R>> = it.produce(resultType, context, this)
+            produce
         }
+}
+
+interface OperatorProducer {
+    fun <R : Any> produce(
+        resultType: KClass<R>,
+        contextType: GraphQLOutputType,
+        operatorRegistry: OperatorRegistry
+    ): Iterable<Operator<R>>
+
 }
 
 //TODO split into Operator (implementation) and OperatorGroup (produces Operator)
 // Or better, make the simple case (group of 1) a subtype of Operator
-interface Operator<R : Any> {
+interface Operator<R : Any> : OperatorProducer {
     val name: String
     fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean
-    fun <T : Any> produce(resultType: KClass<T>, contextType: GraphQLOutputType): Iterable<Operator<T>> =
-        if (canProduce(resultType, contextType)) listOf(this as Operator<T>) else emptyList()
+    override fun <R2 : Any> produce(
+        resultType: KClass<R2>,
+        contextType: GraphQLOutputType,
+        operatorRegistry: OperatorRegistry
+    ): Iterable<Operator<R2>> =
+        if (canProduce(resultType, contextType)) listOf(this as Operator<R2>) else emptyList()
 
     fun makeField(
         from: GraphQLOutputType,
@@ -142,7 +158,7 @@ fun <C : Any, P : Any, R : Any> simpleOperator(
         resultClass = resultClass,
         contextType = contextClass.toGraphQlOutput(),
         parameterType = parameterClass.toGraphQlInput(),
-        compile = { param: Query, _,_ ->
+        compile = { param: Query, _, _ ->
             { c: Result?, v: Variables ->
                 body(
                     fromContext(c) ?: throw Exception("Cannot convert from $c to $contextClass"),
@@ -190,6 +206,7 @@ val ops = OperatorRegistry(
     }
             + Not()
             + AndOfFields()
+            + NonNull()
 
 )
 

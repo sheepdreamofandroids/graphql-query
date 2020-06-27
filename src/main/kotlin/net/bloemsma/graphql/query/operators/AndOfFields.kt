@@ -7,36 +7,22 @@ import graphql.schema.GraphQLOutputType
 import net.bloemsma.graphql.query.*
 import kotlin.reflect.KClass
 
-class AndOfFields : Operator<Boolean> {
-    override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType == Boolean::class && contextType is GraphQLObjectType
-
-    override fun <T : Any> produce(resultType: KClass<T>, contextType: GraphQLOutputType): Iterable<Operator<T>> {
-        return (contextType as? GraphQLObjectType)?.let { graphQLObjectType ->
-            graphQLObjectType.fieldDefinitions.map {
+class AndOfFields : OperatorProducer {
+    override fun <T : Any> produce(
+        resultType: KClass<T>,
+        contextType: GraphQLOutputType,
+        operatorRegistry: OperatorRegistry
+    ): Iterable<Operator<T>> =
+        if (resultType == Boolean::class && contextType is GraphQLObjectType)
+            contextType.fieldDefinitions.map {
                 ObjectFieldOp(
-                    graphQLObjectType,
+                    contextType,
                     it,
                     resultType
                 )
             }
-        } ?: emptyList()
-    }
-
-    override fun makeField(
-        from: GraphQLOutputType,
-        into: GraphQLInputObjectType.Builder,
-        function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
-    ) {
-        throw NotImplementedError()
-    }
-
-    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) -> QueryFunction<Boolean>? = { param: Query, schemaFunction: SchemaFunction<Boolean>, _->
-        throw NotImplementedError()
-    }
-
-    override val name: String = "and of fields"
-
+        else
+            emptyList()
 }
 
 class ObjectFieldOp<R : Any>(
@@ -45,7 +31,6 @@ class ObjectFieldOp<R : Any>(
     resultType: KClass<R>
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-//        resultType == Boolean::class &&
         contextType == graphQLObjectType
 
     override fun makeField(
@@ -63,18 +48,18 @@ class ObjectFieldOp<R : Any>(
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType) -> QueryFunction<R>? = { param: Query, schemaFunction: SchemaFunction<R>,_ ->
-        val context = graphQLObjectType.getFieldDefinition(name).type
-        schemaFunction
-            .functionFor(context, resultType)
-            .compile(null, param,context)
-            .let { func ->
-                { c: Result?, v: Variables ->
-                    func(c?.getField(name), v)
-                }.showingAs { "($name) " }
-            }
-    }
+    override val compile: (param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType) -> QueryFunction<R>? =
+        { param: Query, schemaFunction: SchemaFunction<R>, _ ->
+            val context = graphQLObjectType.getFieldDefinition(name).type
+            schemaFunction
+                .functionFor(context, resultType)
+                .compile(null, param, context)
+                .let { func ->
+                    { c: Result?, v: Variables ->
+                        func(c?.getField(name), v)
+                    }.showingAs { "($name) " }
+                }
+        }
 
     override val name: String = fieldDefinition.name
-
 }

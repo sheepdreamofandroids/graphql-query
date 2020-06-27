@@ -1,7 +1,8 @@
-package net.bloemsma.graphql.query
+package net.bloemsma.graphql.query.operators
 
 import graphql.schema.GraphQLInputObjectType
 import graphql.schema.GraphQLOutputType
+import net.bloemsma.graphql.query.*
 import kotlin.reflect.KClass
 
 class Not : Operator<Boolean> {
