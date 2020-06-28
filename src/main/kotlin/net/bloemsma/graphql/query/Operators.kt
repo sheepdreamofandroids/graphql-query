@@ -11,11 +11,14 @@ import kotlin.reflect.full.isSubclassOf
 
 
 class OperatorRegistry(private val ops: Iterable<OperatorProducer>) {
-    fun <R : Any> applicableTo(resultType: KClass<R>, context: GraphQLOutputType): Iterable<Operator<R>> =
-        ops.flatMap {
-            val produce: Iterable<Operator<R>> = it.produce(resultType, context, this)
-            produce
-        }
+    @JvmOverloads
+    fun <R : Any> applicableTo(
+        resultType: KClass<R>,
+        context: GraphQLOutputType,
+        producerFilter: (OperatorProducer) -> Boolean = { true }
+    ): Iterable<Operator<R>> = ops
+        .filter(producerFilter)
+        .flatMap { it.produce(resultType, context, this) }
 }
 
 interface OperatorProducer {

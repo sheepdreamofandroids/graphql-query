@@ -1,5 +1,8 @@
 package net.bloemsma.graphql.query
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.benmanes.caffeine.cache.Caffeine.newBuilder
 import graphql.ExecutionResult
 import graphql.Scalars.GraphQLString
 import graphql.execution.instrumentation.DocumentAndVariables
@@ -9,7 +12,6 @@ import graphql.language.Document
 import graphql.language.Field
 import graphql.language.OperationDefinition
 import graphql.schema.*
-import graphql.schema.idl.SchemaPrinter
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
@@ -23,10 +25,13 @@ import java.util.concurrent.ConcurrentMap
 class FilterInstrumentation(
     private val ops: OperatorRegistry,
     private val filterName: String,
-    private val schemaPrinter: SchemaPrinter
+    schemaCacheBuilder: Caffeine<Any, Any> = newBuilder()
 ) : SimpleInstrumentation() {
     // this could be an async loading cache, parsing the query while the data is being retrieved
     private val query2ResultModifier: ConcurrentMap<String, ResultModifier> = ConcurrentHashMap()
+    private val schemaCache: Cache<GraphQLSchema, GraphQLSchema> = schemaCacheBuilder
+        .weakKeys() // allows to vacate entries when memory is tight and forces identity semantics
+        .build()
 
     /** Parses a query into a Modifier and stores it in query2modifier */
     override fun instrumentDocumentAndVariables(
@@ -47,7 +52,7 @@ class FilterInstrumentation(
     override fun instrumentSchema(
         schema: GraphQLSchema,
         parameters: InstrumentationExecutionParameters
-    ): GraphQLSchema = addQueryToSchema.transform2(schema)
+    ): GraphQLSchema = schemaCache.get(schema) { addQueryToSchema.transform2(schema) }!!
 
 
     override fun instrumentExecutionResult(
@@ -85,7 +90,7 @@ class FilterInstrumentation(
                     val contextType = type.wrappedType as GraphQLOutputType
                     addQueryToSchema
                         .functionFor(contextType, Boolean::class)
-                        .compile(null, it.value,contextType)
+                        .compile(null, it.value, contextType)
                         .also { println("Filtering ${field.name} on $it") }
                 }?.let { pred: QueryPredicate ->
                     val modifier: ResultModifier = { context: Result, variables: Variables ->
@@ -124,14 +129,16 @@ fun Result.getField(name: String): Any? =
     PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 
-fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = let {
+fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = this
+fun <I, O> ((I) -> O).showingAsX(body: ((I) -> O).() -> String): (I) -> O = let {
     object : ((I) -> O) {
         override fun invoke(i: I): O = it(i)
         override fun toString(): String = it.body()
     }
 }
 
-fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
+fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = this
+fun <I1, I2, O> ((I1, I2) -> O).showingAsX(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
     object : ((I1, I2) -> O) {
         override fun invoke(i1: I1, i2: I2): O {
             println("executing $this($i1, $i2)")

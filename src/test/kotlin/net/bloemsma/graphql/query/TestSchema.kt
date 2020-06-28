@@ -70,7 +70,7 @@ open class TestSchema(
 
     val graphQL: GraphQL = GraphQL
         .newGraphQL(oldSchema)
-        .instrumentation(FilterInstrumentation(ops, "_filter", schemaPrinter))
+        .instrumentation(FilterInstrumentation(ops, "_filter"))
         .build()
 
 }
