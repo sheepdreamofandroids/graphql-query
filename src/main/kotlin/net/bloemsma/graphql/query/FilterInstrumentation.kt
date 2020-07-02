@@ -11,7 +11,11 @@ import graphql.execution.instrumentation.parameters.InstrumentationExecutionPara
 import graphql.language.Document
 import graphql.language.Field
 import graphql.language.OperationDefinition
-import graphql.schema.*
+import graphql.schema.GraphQLList
+import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLSchema
+import graphql.schema.PropertyDataFetcherHelper
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
@@ -45,7 +49,7 @@ class FilterInstrumentation(
     }
 
 
-    private val noModification: ResultModifier = { _: Result, _: Variables -> }.showingAs { "no modification" }
+    private val noModification: ResultModifier = { _: Result?, _: Variables -> }.showingAs { "no modification" }
     private val addQueryToSchema = AddQueryToSchema(ops)
 
     /** Extends schema with filter parameters on lists. */
@@ -78,8 +82,8 @@ class FilterInstrumentation(
                         modifierFor(field, type)?.let { mod ->
                             { r: Result, v: Variables ->
                                 r.getField(field.name)?.let { mod(it, v) }
-                            }
-                        } as ResultModifier?
+                            } as ResultModifier
+                        }
                     }
             }
 
@@ -91,9 +95,9 @@ class FilterInstrumentation(
                     addQueryToSchema
                         .functionFor(contextType, Boolean::class)
                         .compile(null, it.value, contextType)
-                        .also { println("Filtering ${field.name} on $it") }
+                        .logln { "Filtering ${field.name} on $it" }
                 }?.let { pred: QueryPredicate ->
-                    val modifier: ResultModifier = { context: Result, variables: Variables ->
+                    val modifier: ResultModifier = { context: Result?, variables: Variables ->
                         (context as? MutableIterable<Result>)
                             ?.let {
                                 val iterator = it.iterator()
@@ -111,9 +115,9 @@ class FilterInstrumentation(
                     when {
                         fieldModifiers.isEmpty() -> null
                         else -> {
-                            val modifier: ResultModifier = { context: Result, variables: Variables ->
+                            val modifier: ResultModifier = { context: Result?, variables: Variables ->
                                 for ((name, modifier) in fieldModifiers) {
-                                    context.getField(name)?.let { modifier(it, variables) }
+                                    modifier(context?.getField(name), variables)
                                 }
                             }
                             modifier
@@ -129,21 +133,21 @@ fun Result.getField(name: String): Any? =
     PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 
-fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = this
-fun <I, O> ((I) -> O).showingAsX(body: ((I) -> O).() -> String): (I) -> O = let {
+inline fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = this
+fun <I, O> ((I) -> O).XshowingAs(body: ((I) -> O).() -> String): (I) -> O = let {
     object : ((I) -> O) {
         override fun invoke(i: I): O = it(i)
         override fun toString(): String = it.body()
     }
 }
 
-fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = this
-fun <I1, I2, O> ((I1, I2) -> O).showingAsX(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
+inline fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = this
+fun <I1, I2, O> ((I1, I2) -> O).XshowingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
     object : ((I1, I2) -> O) {
         override fun invoke(i1: I1, i2: I2): O {
-            println("executing $this($i1, $i2)")
+            logln { "executing $this($i1, $i2)" }
             val r = it(i1, i2)
-            println("executing $this -> $r")
+            logln { "executing $this -> $r" }
             return r
         }
 

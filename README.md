@@ -36,7 +36,7 @@ See in the file "TestSchema.kt" how to add FilterInstrumentation to your GraphQL
 ```kotlin
 val graphQL: GraphQL = GraphQL
     .newGraphQL(oldSchema)
-    .instrumentation(FilterInstrumentation(ops, "_filter", schemaPrinter))
+    .instrumentation(FilterInstrumentation(ops, "_filter"))
     .build()
 ```
 
@@ -48,4 +48,5 @@ val graphQL: GraphQL = GraphQL
 - No pagination.
 - The code needs some serious cleanup!
 - It should be easier to add new operators.
+- Needs more tests.
 - NOT ready for production.

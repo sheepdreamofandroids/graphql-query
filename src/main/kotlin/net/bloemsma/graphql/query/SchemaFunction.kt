@@ -1,7 +1,12 @@
 package net.bloemsma.graphql.query
 
 import graphql.language.ObjectValue
-import graphql.schema.*
+import graphql.schema.GraphQLFieldDefinition
+import graphql.schema.GraphQLInputObjectType
+import graphql.schema.GraphQLInputType
+import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLTypeReference
 import kotlin.reflect.KClass
 
 /** Represents a function for one particular type in the schema.*/
@@ -38,10 +43,10 @@ class SchemaFunction<R : Any>(
     fun reference() = ref
     fun referenc2e() = if (wasReferenced) {
         // all subsequent references including recursive use a named reference
-        println("typeref to $signatureName")
+        logln { "typeref to $signatureName" }
         GraphQLTypeReference.typeRef(signatureName)
     } else { // only the very first reference uses the actual type so it is referenced exactly once
-        println("acutally using $signatureName")
+        logln { "acutally using $signatureName" }
         wasReferenced = true
         parmQlType
     }
@@ -78,7 +83,7 @@ class SchemaFunction<R : Any>(
             )
 
     fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
-        function(type, kClass).also { println("Got $this") } as SchemaFunction<T>
+        function(type, kClass).logln { "Got $this" } as SchemaFunction<T>
 }
 
 private fun GraphQLOutputType.objectField(name: String): GraphQLFieldDefinition? =

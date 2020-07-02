@@ -8,10 +8,9 @@ typealias Result = Any
 /** The query is represented as a tree of Value */
 typealias Query = Value<*>
 
-
-// modifying the query result is destructive
-typealias  ResultModifier = (Result, Variables) -> Unit
-
+/** A function at query time */
 typealias QueryFunction<R> = (Result?, Variables) -> R
 typealias QueryPredicate = QueryFunction<Boolean>
+// modifying the query result is destructive
+typealias ResultModifier = QueryFunction<Unit>
 

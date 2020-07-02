@@ -2,8 +2,15 @@ package net.bloemsma.graphql.query
 
 import graphql.Scalars
 import graphql.language.VariableReference
-import graphql.schema.*
+import graphql.schema.GraphQLFieldDefinition
+import graphql.schema.GraphQLInputObjectField
+import graphql.schema.GraphQLInputObjectType
+import graphql.schema.GraphQLInputType
+import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLScalarType
 import net.bloemsma.graphql.query.operators.AndOfFields
+import net.bloemsma.graphql.query.operators.AnyOfList
 import net.bloemsma.graphql.query.operators.NonNull
 import net.bloemsma.graphql.query.operators.Not
 import kotlin.reflect.KClass
@@ -56,7 +63,7 @@ interface Operator<R : Any> : OperatorProducer {
 
 class SimpleOperator<R : Any>(
     override val name: String,
-    val resultClass: KClass<*>,
+    val resultClass: KClass<R>,
     val contextType: GraphQLOutputType,
     val parameterType: GraphQLInputType,
     private val description: String? = null,
@@ -106,9 +113,9 @@ inline fun <reified R : Any, reified P : Any, reified C : Any> operator(
 /** Operator with non-null parameters */
 inline fun <reified C : Any, reified P : Any, reified R : Any> simpleOperator(
     name: String,
-    resultClass: KClass<*>,
-    contextClass: KClass<*>,
-    parameterClass: KClass<*>,
+    resultClass: KClass<R>,
+    contextClass: KClass<C>,
+    parameterClass: KClass<P>,
     noinline body: (context: C, parameter: P) -> R
 ): SimpleOperator<R> {
     assert(R::class.isSubclassOf(resultClass))
@@ -127,34 +134,14 @@ inline fun <reified C : Any, reified P : Any, reified R : Any> simpleOperator(
     )
 }
 
-fun <C : Any, P : Any, R : Any> simpleOperatorImpl(
+inline fun <reified C : Any, reified P : Any, reified R : Any> simpleOperator(
     name: String,
-    resultClass: KClass<*>,
-    contextClass: KClass<*>,
-    parameterClass: KClass<*>,
-    body: (context: C, parameter: P) -> R
-): SimpleOperator<R> {
-    val fromParam: (Any?) -> P? = resultTo(parameterClass)
-    val fromContext: (Any?) -> C? = resultTo(contextClass)
-    return simpleOperator(
-        name,
-        resultClass,
-        contextClass,
-        fromContext,
-        parameterClass,
-        fromParam,
-        body
-    )
-}
-
-fun <C : Any, P : Any, R : Any> simpleOperator(
-    name: String,
-    resultClass: KClass<*>,
-    contextClass: KClass<*>,
-    fromContext: (Any?) -> C?,
-    parameterClass: KClass<*>,
-    fromParam: (Any?) -> P?,
-    body: (context: C, parameter: P) -> R
+    resultClass: KClass<R>,
+    contextClass: KClass<C>,
+    crossinline fromContext: (Any?) -> C?,
+    parameterClass: KClass<P>,
+    noinline fromParam: (Any?) -> P?,
+    crossinline body: (context: C, parameter: P) -> R
 ): SimpleOperator<R> {
     return SimpleOperator(
         name = name,
@@ -197,24 +184,25 @@ val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
 
 val ops = OperatorRegistry(
     builtins.flatMap { (kClass, gqlType) ->
-        kClass.run {
+        (kClass as KClass<Comparable<Comparable<*>>>).run {
             listOf(
-                bsp<Any>("eq") { a, b -> a == b },
-                bsp<Comparable<Comparable<*>>>("gt") { a, b -> a > b },
-                bsp<Comparable<Comparable<*>>>("gte") { a, b -> a >= b },
-                bsp<Comparable<Comparable<*>>>("lt") { a, b -> a < b },
-                bsp<Comparable<Comparable<*>>>("lte") { a, b -> a <= b }
+                (this as KClass<Any>).bsp("eq") { a, b -> a == b },
+                bsp("gt") { a, b -> a > b },
+                bsp("gte") { a, b -> a >= b },
+                bsp("lt") { a, b -> a < b },
+                bsp("lte") { a, b -> a <= b }
             )
         }
     }
             + Not()
             + AndOfFields()
             + NonNull()
+            + AnyOfList()
 
 )
 
 /** Binary (2 parameter), symmetric(both the same type) predicate*/
-private inline fun <reified T : Any> KClass<*>.bsp(name: String, noinline body: (T, T) -> Boolean) =
+private inline fun <reified T : Any> KClass<T>.bsp(name: String, noinline body: (T, T) -> Boolean) =
     simpleOperator(name, Boolean::class, this, this, body)
 
 fun <T : Any> KClass<T>.toGraphQlOutput(): GraphQLScalarType = toGraphQlInput()

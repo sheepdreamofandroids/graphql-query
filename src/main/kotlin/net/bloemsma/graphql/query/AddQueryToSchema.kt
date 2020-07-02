@@ -1,6 +1,18 @@
 package net.bloemsma.graphql.query
 
-import graphql.schema.*
+import graphql.schema.GraphQLEnumType
+import graphql.schema.GraphQLFieldDefinition
+import graphql.schema.GraphQLInputType
+import graphql.schema.GraphQLList
+import graphql.schema.GraphQLNamedType
+import graphql.schema.GraphQLNonNull
+import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLSchema
+import graphql.schema.GraphQLSchemaElement
+import graphql.schema.GraphQLType
+import graphql.schema.GraphQLTypeVisitorStub
+import graphql.schema.SchemaTransformer
 import graphql.util.TraversalControl
 import graphql.util.TraverserContext
 import graphql.util.TreeTransformerUtil
@@ -43,7 +55,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                 node.type.filterableType()?.let { listType: GraphQLList ->
                     listType.wrappedType.testableType()?.let { predicateType ->
                         if (!predicateType.isBuiltInReflection()) {
-                            println("modified $node")
+                            logln { "modified $node" }
                             val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
                                 .argument { arg ->
                                     arg.name("_filter")
@@ -52,7 +64,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                                 // can't use a directive because it's declared globally and
                                 // therefore the argument type is the same everywhere
                                 .build()
-                            println("into $newNode")
+                            logln { "into $newNode" }
                             updateAdditionalTypes(context)
                             return TreeTransformerUtil.changeNode(context, newNode)
                         }
@@ -62,10 +74,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                 return super.visitGraphQLFieldDefinition(node, context)
             }
         })
-            .also {
-                println("Found these functions: $functions")
-//                println(schemaPrinter.print(it))
-            }
+            .logln { "Found these functions: $functions" }
     }
 
     fun transform2(schema: GraphQLSchema) = object : SchemaChanger(schema) {
@@ -79,7 +88,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                             arg.name("_filter")
                             arg.type(schemaFunction.reference())
                         }
-                        println("Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction.")
+                        logln { "Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction." }
 //                        additionalTypes.add(schemaFunction.parmQlType)
                     }
                 }

@@ -1,13 +1,22 @@
 package net.bloemsma.graphql.query
 
-import graphql.schema.*
+import graphql.schema.GraphQLEnumType
+import graphql.schema.GraphQLFieldDefinition
 import graphql.schema.GraphQLFieldDefinition.newFieldDefinition
+import graphql.schema.GraphQLList
 import graphql.schema.GraphQLList.list
+import graphql.schema.GraphQLNonNull
 import graphql.schema.GraphQLNonNull.nonNull
+import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLScalarType
+import graphql.schema.GraphQLSchema
 import graphql.schema.GraphQLSchema.newSchema
+import graphql.schema.GraphQLType
+import graphql.schema.GraphQLTypeReference
 import graphql.schema.idl.SchemaPrinter
 
-open abstract class SchemaChanger(val schema: GraphQLSchema) {
+abstract class SchemaChanger(val schema: GraphQLSchema) {
     val originalObjects: MutableMap<String, GraphQLObjectType> = mutableMapOf()
     val referencedObjects: MutableMap<String, GraphQLObjectType> = mutableMapOf()
     val references: MutableMap<String, GraphQLTypeReference> = mutableMapOf()
@@ -26,9 +35,8 @@ open abstract class SchemaChanger(val schema: GraphQLSchema) {
         else -> throw Exception("extend me!")
     }
 
-    open fun change() = newSchema(schema).change().build().also {
-        println(SchemaPrinter(SchemaPrinter.Options.defaultOptions()).print(it))
-    }
+    open fun change() = newSchema(schema).change().build()
+        .logln { SchemaPrinter(SchemaPrinter.Options.defaultOptions()).print(it) }
 
     open fun GraphQLSchema.Builder.change(): GraphQLSchema.Builder = apply {
         clearAdditionalTypes()
