@@ -8,6 +8,7 @@ import graphql.schema.GraphQLNamedType
 import graphql.schema.GraphQLNonNull
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
+import graphql.schema.GraphQLScalarType
 import graphql.schema.GraphQLSchema
 import graphql.schema.GraphQLSchemaElement
 import graphql.schema.GraphQLType
@@ -148,6 +149,7 @@ fun GraphQLType.testableType(): GraphQLOutputType? = when (this) {
     is GraphQLList -> this
     is GraphQLObjectType -> this
     is GraphQLEnumType -> this
+    is GraphQLScalarType -> this
     else -> null
 }
 

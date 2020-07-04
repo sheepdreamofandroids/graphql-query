@@ -20,7 +20,7 @@ class AnyOfList : OperatorProducer {
         resultType: KClass<R>,
         contextType: GraphQLOutputType,
         operatorRegistry: OperatorRegistry
-    ): Iterable<Operator<R>> = if (!canProduce(contextType)) listOf() else mutableListOf<Operator<R>>().apply {
+    ): Iterable<Operator<R>> = if (!contextType.canProduce()) listOf() else mutableListOf<Operator<R>>().apply {
         if (resultType == Boolean::class) {
             add(ListOp("_ANY", Boolean::class, Boolean::class) { predicate ->
                 { r: Result?, v: Variables ->
@@ -58,7 +58,7 @@ class ListOp<R : Any, O : Any>(
     body: (QueryFunction<O>) -> (Result?, Variables) -> O
 ) : Operator<O> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
-        resultType.isSubclassOf(requiredResultType) && (contextType as? GraphQLList)?.wrappedType?.testableType() != null
+        resultType.isSubclassOf(requiredResultType) && contextType.toTest() != null
 
     override fun makeField(
         from: GraphQLOutputType,
@@ -74,12 +74,15 @@ class ListOp<R : Any, O : Any>(
 
     override val compile: (param: Query, schemaFunction: SchemaFunction<O>, context: GraphQLOutputType) -> QueryFunction<O>? =
         { param: Query, schemaFunction: SchemaFunction<O>, context: GraphQLOutputType ->
-            val fn: QueryFunction<O> = schemaFunction.functionFor(context, outputType)
+            val fn: QueryFunction<O> = schemaFunction.functionFor(context.toTest()!!, outputType)
                 .compile(name, param, context);
             body(fn)
         }
 
 }
 
-private fun canProduce(contextType: GraphQLOutputType) =
-    (contextType as? GraphQLList)?.wrappedType?.testableType() != null
+private fun GraphQLOutputType.canProduce() =
+    this.toTest() != null
+
+private fun GraphQLOutputType.toTest() =
+    (this as? GraphQLList)?.wrappedType?.testableType()

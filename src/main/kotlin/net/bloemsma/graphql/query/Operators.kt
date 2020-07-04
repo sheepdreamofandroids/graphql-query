@@ -23,9 +23,15 @@ class OperatorRegistry(private val ops: Iterable<OperatorProducer>) {
         resultType: KClass<R>,
         context: GraphQLOutputType,
         producerFilter: (OperatorProducer) -> Boolean = { true }
-    ): Iterable<Operator<R>> = ops
-        .filter(producerFilter)
-        .flatMap { it.produce(resultType, context, this) }
+    ): Iterable<Operator<R>> = trace({ "applicableto $context -> $resultType" }) {
+        ops
+            .filter(producerFilter)
+            .flatMap {
+                trace({ "$it product for $context -> $resultType" }) {
+                    it.produce(resultType, context, this)
+                }
+            }
+    }
 }
 
 interface OperatorProducer {
@@ -84,7 +90,7 @@ class SimpleOperator<R : Any>(
         }
     }
 
-    override fun toString() = "$name($contextType, $parameterType)->$resultClass // $description"
+    override fun toString() = "$name(${contextType.makeName()}, ${parameterType.makeName()})->${resultClass.simpleName} // $description"
 }
 
 fun GraphQLObjectType.Builder.addField(block: GraphQLFieldDefinition.Builder.() -> Unit): GraphQLObjectType.Builder =

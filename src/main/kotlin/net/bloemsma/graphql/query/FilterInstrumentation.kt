@@ -133,24 +133,24 @@ fun Result.getField(name: String): Any? =
     PropertyDataFetcherHelper.getPropertyValue(name, this, GraphQLString)
 
 
-inline fun <I, O> ((I) -> O).showingAs(body: ((I) -> O).() -> String): (I) -> O = this
-fun <I, O> ((I) -> O).XshowingAs(body: ((I) -> O).() -> String): (I) -> O = let {
-    object : ((I) -> O) {
-        override fun invoke(i: I): O = it(i)
-        override fun toString(): String = it.body()
-    }
-}
-
-inline fun <I1, I2, O> ((I1, I2) -> O).showingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = this
-fun <I1, I2, O> ((I1, I2) -> O).XshowingAs(body: ((I1, I2) -> O).() -> String): (I1, I2) -> O = let {
-    object : ((I1, I2) -> O) {
-        override fun invoke(i1: I1, i2: I2): O {
-            logln { "executing $this($i1, $i2)" }
-            val r = it(i1, i2)
-            logln { "executing $this -> $r" }
-            return r
+inline fun <I, O> ((I) -> O).showingAs(crossinline body: ((I) -> O).() -> String): (I) -> O =
+    if (debug == false) this else let {
+        object : ((I) -> O) {
+            override fun invoke(i: I): O = it(i)
+            override fun toString(): String = it.body()
         }
-
-        override fun toString(): String = it.body()
     }
-}
+
+inline fun <I1, I2, O> ((I1, I2) -> O).showingAs(crossinline body: ((I1, I2) -> O).() -> String): (I1, I2) -> O =
+    if (debug == false) this else let {
+        object : ((I1, I2) -> O) {
+            override fun invoke(i1: I1, i2: I2): O {
+                logln { "executing $this($i1, $i2)" }
+                val r = it(i1, i2)
+                logln { "executing $this -> $r" }
+                return r
+            }
+
+            override fun toString(): String = it.body()
+        }
+    }

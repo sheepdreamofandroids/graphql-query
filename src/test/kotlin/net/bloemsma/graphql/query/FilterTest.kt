@@ -1,11 +1,12 @@
 package net.bloemsma.graphql.query
 
 import assertk.assertions.hasSize
-import io.kotest.core.spec.style.FreeSpec
+import org.junit.Test
 
-class FilterTest : FreeSpec({
+class FilterTest {
 
-    "check filter" {
+    @Test
+    fun `check filter`() {
         "{result(count: 2, _filter: {int: {lt: 1}}) { int }}"
             .check(testSchema.graphQL) {
                 field<List<*>>("result") {
@@ -17,7 +18,8 @@ class FilterTest : FreeSpec({
             }
     }
 
-    "check negation" {
+    @Test
+    fun `check negation`() {
         "{result(count: 2, _filter: {int: {not: {lt: 1}}}) { int }}"
             .check(testSchema.graphQL) {
                 field<List<*>>("result") {
@@ -29,7 +31,8 @@ class FilterTest : FreeSpec({
             }
     }
 
-    "fragment selection can be used to filter as long as the original name is used" {
+    @Test
+    fun `fragment selection can be used to filter as long as the original name is used`() {
         """
         {
           result(count: 3, _filter: {int: {lt: 1}}) {
@@ -50,6 +53,27 @@ class FilterTest : FreeSpec({
         }
 
     }
-})
+
+    @Test
+    fun `list of nonnull can be tested`() {
+        """
+       {
+  result(count: 10, _filter:{nonNullStringArray:{_ANY:{lt:"3"}}}) {
+    int
+    nonNullStringArray
+  }
+}
+
+    """.trimIndent().check(testSchema.graphQL) {
+            field<List<*>>("result") {
+                hasSize(1)
+                at(0) {
+                    field<Int>("int") { equals(0) }
+                }
+            }
+        }
+
+    }
+}
 
 object testSchema : TestSchema()

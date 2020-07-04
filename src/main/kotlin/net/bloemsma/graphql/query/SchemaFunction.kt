@@ -52,35 +52,37 @@ class SchemaFunction<R : Any>(
     }
 
     override fun toString(): String {
-        return "Function for $signatureName"
+        return "SchemaFunction $signatureName with ops (${operators.keys})"
     }
 
     fun compile(name: String?, value: Query, context: GraphQLOutputType): QueryFunction<R> =
-        (value as? ObjectValue)?.objectFields
-            ?.mapNotNull { dataField ->
-                operators[dataField.name]
-                    ?.compile
-                    ?.invoke(dataField.value, this, context)
-            }
-            ?.let { effectiveOps ->
-                when (effectiveOps.size) {
-                    0 -> throw GraphQlQueryException(
-                        "Empty object",
-                        value.sourceLocation
-                    )
-                    1 -> effectiveOps[0]
-                    else -> {
-                        { c: Result?, v: Variables ->
-                            // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
-                            effectiveOps.all { it(c, v) as Boolean } as R
-                        }.showingAs { effectiveOps.joinToString(prefix = "AND(", separator = ", ", postfix = ")") }
+        trace({ "$this.compile" }) {
+            (value as? ObjectValue)?.objectFields
+                ?.mapNotNull { dataField ->
+                    trace({ "${dataField.name} -> ${this.javaClass.simpleName} .compile" }) {
+                            operators[dataField.name]?. compile?.let { it(dataField.value, this@SchemaFunction, context) }
+                        }
+                }
+                ?.let { effectiveOps ->
+                    when (effectiveOps.size) {
+                        0 -> throw GraphQlQueryException(
+                            "Empty object",
+                            value.sourceLocation
+                        )
+                        1 -> effectiveOps[0]
+                        else -> {
+                            { c: Result?, v: Variables ->
+                                // TODO only makes sense for predicates otherwise need different join function like ADD or MULT
+                                effectiveOps.all { it(c, v) as Boolean } as R
+                            }.showingAs { effectiveOps.joinToString(prefix = "AND(", separator = ", ", postfix = ")") }
+                        }
                     }
                 }
-            }
-            ?: throw GraphQlQueryException(
-                "Empty object",
-                value.sourceLocation
-            )
+                ?: throw GraphQlQueryException(
+                    "Empty object",
+                    value.sourceLocation
+                )
+        }
 
     fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
         function(type, kClass).logln { "Got $this" } as SchemaFunction<T>

@@ -5,7 +5,11 @@ import graphql.schema.DataFetcher
 import graphql.schema.FieldCoordinates
 import graphql.schema.GraphQLCodeRegistry
 import graphql.schema.GraphQLSchema
-import graphql.schema.idl.*
+import graphql.schema.idl.RuntimeWiring
+import graphql.schema.idl.SchemaGenerator
+import graphql.schema.idl.SchemaParser
+import graphql.schema.idl.SchemaPrinter
+import graphql.schema.idl.TypeDefinitionRegistry
 
 open class TestSchema(
     val originalSchema: String = """
@@ -18,6 +22,7 @@ open class TestSchema(
                   "calculate a number and inserts it into the template replacing {}"
                   string(plus: Int, times: Int, template: String): String
                   intArray(plus: Int, times: Int, count: Int, step: Int): [Int]
+                  nonNullStringArray(plus: Int, times: Int, count: Int, step: Int, template: String): [String!]
                 }
                 """,
     val types: TypeDefinitionRegistry = SchemaParser().parse(originalSchema)
@@ -57,6 +62,17 @@ open class TestSchema(
                         val step: Int = env.getArgument("step") ?: 1
                         val start = (env.getSource<Int>() * times + plus)
                         (0..count - 1).map { it * step + start }
+                    })
+                .dataFetcher(
+                    FieldCoordinates.coordinates("result", "nonNullStringArray"),
+                    DataFetcher { env ->
+                        val plus: Int = env.getArgument("plus") ?: 0
+                        val times: Int = env.getArgument("times") ?: 1
+                        val count: Int = env.getArgument("count") ?: 10
+                        val step: Int = env.getArgument("step") ?: 1
+                        val template: String = env.getArgument("template") ?: "{}"
+                        val start = (env.getSource<Int>() * times + plus)
+                        (0..count - 1).map { template.replace("{}", (it * step + start).toString()) }
                     })
         ).build()
     )
