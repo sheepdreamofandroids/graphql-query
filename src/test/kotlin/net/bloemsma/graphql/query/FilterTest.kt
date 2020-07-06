@@ -55,24 +55,20 @@ class FilterTest {
     }
 
     @Test
-    fun `list of nonnull can be tested`() {
-        """
-       {
-  result(count: 10, _filter:{nonNullStringArray:{_ANY:{lt:"3"}}}) {
-    int
-    nonNullStringArray
-  }
-}
-
-    """.trimIndent().check(testSchema.graphQL) {
-            field<List<*>>("result") {
-                hasSize(1)
-                at(0) {
-                    field<Int>("int") { equals(0) }
-                }
+    fun `list of nonnull can be tested`() = """
+         {
+          result(count: 6, _filter:{nonNullStringArray:{_ANY:{lt:"3"}}}) {
+            int
+            nonNullStringArray(count:3)
+          }
+        }
+    """.check(testSchema.graphQL) {
+        field<List<*>>("result") {
+            hasSize(3)
+            at(2) {
+                field<Int>("int") { equals(2) }
             }
         }
-
     }
 }
 
