@@ -1,7 +1,8 @@
 package net.bloemsma.graphql.query
 
-import assertk.assertions.hasSize
-import org.junit.Test
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.Test
 
 class FilterTest {
 
@@ -10,9 +11,9 @@ class FilterTest {
         "{result(count: 2, _filter: {int: {lt: 1}}) { int }}"
             .check(testSchema.graphQL) {
                 field<List<*>>("result") {
-                    hasSize(1)
+                    shouldHaveSize(1)
                     at(0) {
-                        field<Int>("int") { equals(0) }
+                        field<Int>("int") { shouldBe(0) }
                     }
                 }
             }
@@ -23,9 +24,9 @@ class FilterTest {
         "{result(count: 2, _filter: {int: {not: {lt: 1}}}) { int }}"
             .check(testSchema.graphQL) {
                 field<List<*>>("result") {
-                    hasSize(1)
+                    shouldHaveSize(1)
                     at(0) {
-                        field<Int>("int") { equals(1) }
+                        field<Int>("int") { shouldBe(1) }
                     }
                 }
             }
@@ -45,9 +46,9 @@ class FilterTest {
         }
     """.trimIndent().check(testSchema.graphQL) {
             field<List<*>>("result") {
-                hasSize(1)
+                shouldHaveSize(1)
                 at(0) {
-                    field<Int>("int") { equals(0) }
+                    field<Int>("int") { shouldBe(0) }
                 }
             }
         }
@@ -64,9 +65,9 @@ class FilterTest {
         }
     """.check(testSchema.graphQL) {
         field<List<*>>("result") {
-            hasSize(3)
+            shouldHaveSize(3)
             at(2) {
-                field<Int>("int") { equals(2) }
+                field<Int>("int") { shouldBe(2) }
             }
         }
     }

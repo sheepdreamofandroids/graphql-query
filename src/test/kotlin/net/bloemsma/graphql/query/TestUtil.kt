@@ -1,19 +1,25 @@
 package net.bloemsma.graphql.query
 
-import assertk.Assert
-import assertk.all
-import assertk.assertThat
-import assertk.assertions.isNotNull
 import graphql.ExecutionResult
 import graphql.GraphQL
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.types.shouldBeInstanceOf
 
-fun ExecutionResult.check(body: Assert<Result>.() -> Unit) = assertThat(this.getData<Result>()).body()
-fun String.check(graphQL: GraphQL, body: Assert<Result>.() -> Unit) = assertThat(
-    graphQL.execute(this).getData<Result>()
-).body()
+fun ExecutionResult.check(body: Result.() -> Unit) = this.getData<Result>().body()
 
-fun <T : Any> Assert<List<T?>?>.at(i: Int, body: Assert<T>.() -> Unit) =
-    isNotNull().transform { it[i] }.isNotNull().all(body)
+fun String.check(graphQL: GraphQL, body: Result.() -> Unit) =
+    graphQL.execute(this).getData<Result>().body()
 
-fun <T : Any> Assert<Any?>.field(s: String, body: Assert<T>.() -> Unit) =
-    isNotNull().transform { it.getField(s) as T? }.isNotNull().all(body)
+fun <T : Any> List<T?>?.at(i: Int, body: T.() -> Unit) {
+    this.shouldNotBeNull()
+    val element = this[i]
+    element.shouldNotBeNull()
+    element.body()
+}
+
+inline fun <reified T : Any> Any?.field(s: String, body: T.() -> Unit) {
+    this.shouldNotBeNull()
+    val field = getField(s)
+    field.shouldNotBeNull()
+    field.shouldBeInstanceOf<T> { it.body() }
+}

@@ -27,13 +27,14 @@ import java.util.concurrent.ConcurrentMap
  * 3 when the query is actually executed, retrieve that ResultModifier from the cache and apply it to the result. This happens for every query.
  * */
 class FilterInstrumentation(
-    private val ops: OperatorRegistry,
-    private val filterName: String,
-    schemaCacheBuilder: Caffeine<Any, Any> = newBuilder()
+    private val filterName: String = "_filter",
+    private val ops: OperatorRegistry = defaultOperators,
+    private val cacheConfig: Caffeine<Any, Any>.() -> Unit = {}
 ) : SimpleInstrumentation() {
     // this could be an async loading cache, parsing the query while the data is being retrieved
     private val query2ResultModifier: ConcurrentMap<String, ResultModifier> = ConcurrentHashMap()
-    private val schemaCache: Cache<GraphQLSchema, GraphQLSchema> = schemaCacheBuilder
+    private val schemaCache: Cache<GraphQLSchema, GraphQLSchema> = newBuilder()
+        .apply(cacheConfig)
         .weakKeys() // allows to vacate entries when memory is tight and forces identity semantics
         .build()
 

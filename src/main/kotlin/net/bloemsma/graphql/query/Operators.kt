@@ -188,7 +188,7 @@ val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
     String::class to Scalars.GraphQLString
 )
 
-val ops = OperatorRegistry(
+val defaultOperators = OperatorRegistry(
     builtins.flatMap { (kClass, gqlType) ->
         (kClass as KClass<Comparable<Comparable<*>>>).run {
             listOf(

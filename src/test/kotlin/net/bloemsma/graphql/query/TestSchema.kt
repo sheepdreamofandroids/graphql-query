@@ -11,6 +11,7 @@ import graphql.schema.idl.SchemaParser
 import graphql.schema.idl.SchemaPrinter
 import graphql.schema.idl.TypeDefinitionRegistry
 
+/** A schema with datafetchers that can be used to easily create all kinds of test scenarios */
 open class TestSchema(
     val originalSchema: String = """
                 type Query {
@@ -86,7 +87,7 @@ open class TestSchema(
 
     val graphQL: GraphQL = GraphQL
         .newGraphQL(oldSchema)
-        .instrumentation(FilterInstrumentation(ops, "_filter"))
+        .instrumentation(FilterInstrumentation())
         .build()
 
 }
