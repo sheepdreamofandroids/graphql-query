@@ -36,7 +36,7 @@ See in the file "TestSchema.kt" how to add FilterInstrumentation to your GraphQL
 ```kotlin
 val graphQL: GraphQL = GraphQL
     .newGraphQL(oldSchema)
-    .instrumentation(FilterInstrumentation(ops, "_filter"))
+    .instrumentation(FilterInstrumentation())
     .build()
 ```
 
