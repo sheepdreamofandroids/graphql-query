@@ -57,7 +57,7 @@ class FilterInstrumentation(
     override fun instrumentSchema(
         schema: GraphQLSchema,
         parameters: InstrumentationExecutionParameters
-    ): GraphQLSchema = schemaCache.get(schema) { addQueryToSchema.transform2(schema) }!!
+    ): GraphQLSchema = schemaCache.get(schema) { addQueryToSchema.transform(schema) }!!
 
 
     override fun instrumentExecutionResult(

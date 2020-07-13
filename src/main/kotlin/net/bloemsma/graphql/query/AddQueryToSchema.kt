@@ -45,40 +45,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
         }.value as SchemaFunction<R>
     }
 
-    fun transform(
-        schema: GraphQLSchema
-    ): GraphQLSchema {
-        return SchemaTransformer.transformSchema(schema, object : GraphQLTypeVisitorStub() {
-            override fun visitGraphQLFieldDefinition(
-                node: GraphQLFieldDefinition,
-                context: TraverserContext<GraphQLSchemaElement>
-            ): TraversalControl {
-                node.type.filterableType()?.let { listType: GraphQLList ->
-                    listType.wrappedType.testableType()?.let { predicateType ->
-                        if (!predicateType.isBuiltInReflection()) {
-                            logln { "modified $node" }
-                            val newNode = GraphQLFieldDefinition.newFieldDefinition(node)
-                                .argument { arg ->
-                                    arg.name("_filter")
-                                    arg.type(functionFor(predicateType, Boolean::class).reference())
-                                }
-                                // can't use a directive because it's declared globally and
-                                // therefore the argument type is the same everywhere
-                                .build()
-                            logln { "into $newNode" }
-                            updateAdditionalTypes(context)
-                            return TreeTransformerUtil.changeNode(context, newNode)
-                        }
-                    }
-                }
-                updateAdditionalTypes(context)
-                return super.visitGraphQLFieldDefinition(node, context)
-            }
-        })
-            .logln { "Found these functions: $functions" }
-    }
-
-    fun transform2(schema: GraphQLSchema) = object : SchemaChanger(schema) {
+    fun transform(schema: GraphQLSchema) = object : SchemaChanger(schema) {
         override fun GraphQLFieldDefinition.Builder.change(original: GraphQLFieldDefinition) {
             this.changeDefault(original)
             original.type.filterableType()?.let { listType: GraphQLList ->
@@ -108,16 +75,6 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
     }.change()
 
 
-    /** Function types are always referenced by name. Therefore they have to be added as additional types to the schema
-     * or else those names would be unknown.
-     */
-    private fun updateAdditionalTypes(context: TraverserContext<GraphQLSchemaElement>) {
-//        val root = context.parentNodes.last()
-//        root.withNewChildren(root.childrenWithTypeReferences.transform {
-//            it.children("addTypes", functions.values.map { it.value.parmQlType })
-//        })
-    }
-
 }
 
 fun GraphQLType.makeName(): String = when (this) {
@@ -127,22 +84,6 @@ fun GraphQLType.makeName(): String = when (this) {
     else -> "Cannot make name for $this"
 }
 
-private fun filterable(node: GraphQLFieldDefinition): Boolean {
-    val listType = node.type as? GraphQLList ?: return false
-    // The following skips all built-in reflection queries.
-    // Should the following just be hardcoded names?
-    val nonNullType = listType.wrappedType as? GraphQLNonNull ?: return true
-    return when (val objectType = nonNullType.wrappedType) {
-        is GraphQLNamedType -> !objectType.name.startsWith("__")
-        else -> false
-    }
-}
-
-
-fun GraphQLType.effectiveType(): GraphQLType = when (this) {
-    is GraphQLNonNull -> wrappedType.effectiveType()
-    else -> this
-}
 
 fun GraphQLType.testableType(): GraphQLOutputType? = when (this) {
     is GraphQLNonNull -> wrappedType.testableType()
