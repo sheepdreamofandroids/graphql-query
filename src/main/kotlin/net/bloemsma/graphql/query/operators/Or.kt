@@ -24,12 +24,12 @@ class OrOfFields : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) -> QueryFunction<Boolean>?
-        get() = TODO("Not yet implemented")
-//            = { param: Query, schemaFunction: SchemaFunction<Boolean> ->
-//        param.
-//        { r: Result, v: Variables -> true } as QueryPredicate
-//    }
+    override fun compile(
+        param: Query,
+        schemaFunction: SchemaFunction<Boolean>,
+        context: GraphQLOutputType
+    ): QueryFunction<Boolean>? =
+        TODO("Not yet implemented")
 
     override val name: String = "_OR"
 }

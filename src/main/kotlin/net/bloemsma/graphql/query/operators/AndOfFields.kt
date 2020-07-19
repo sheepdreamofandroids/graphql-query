@@ -4,16 +4,26 @@ import graphql.schema.GraphQLFieldDefinition
 import graphql.schema.GraphQLInputObjectType
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
-import net.bloemsma.graphql.query.*
+import net.bloemsma.graphql.query.Operator
+import net.bloemsma.graphql.query.OperatorProducer
+import net.bloemsma.graphql.query.OperatorRegistry
+import net.bloemsma.graphql.query.Query
+import net.bloemsma.graphql.query.QueryFunction
+import net.bloemsma.graphql.query.Result
+import net.bloemsma.graphql.query.SchemaFunction
+import net.bloemsma.graphql.query.Variables
+import net.bloemsma.graphql.query.getField
+import net.bloemsma.graphql.query.showingAs
 import kotlin.reflect.KClass
 
+// TODO generify to more than boolean
 class AndOfFields : OperatorProducer {
     override fun <T : Any> produce(
         resultType: KClass<T>,
         contextType: GraphQLOutputType,
         operatorRegistry: OperatorRegistry
     ): Iterable<Operator<T>> =
-        if (resultType == Boolean::class && contextType is GraphQLObjectType)
+        if (/*resultType == Boolean::class &&*/ contextType is GraphQLObjectType)
             contextType.fieldDefinitions.map {
                 ObjectFieldOp(
                     contextType,
@@ -28,7 +38,7 @@ class AndOfFields : OperatorProducer {
 class ObjectFieldOp<R : Any>(
     private val graphQLObjectType: GraphQLObjectType,
     fieldDefinition: GraphQLFieldDefinition,
-    resultType: KClass<R>
+    private val resultType: KClass<R>
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
         contextType == graphQLObjectType
@@ -48,18 +58,18 @@ class ObjectFieldOp<R : Any>(
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType) -> QueryFunction<R>? =
-        { param: Query, schemaFunction: SchemaFunction<R>, _ ->
-            val context = graphQLObjectType.getFieldDefinition(name).type
-            schemaFunction
-                .functionFor(context, resultType)
-                .compile(null, param, context)
-                .let { func ->
-                    { c: Result?, v: Variables ->
-                        func(c?.getField(name), v)
-                    }.showingAs { "($name) " }
-                }
-        }
+    override fun compile(param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType): QueryFunction<R>?
+    {
+        val context = graphQLObjectType.getFieldDefinition(name).type
+        return schemaFunction
+            .functionFor(context, resultType)
+            .compile(null, param, context)
+            .let { func ->
+                { c: Result?, v: Variables ->
+                    func(c?.getField(name), v)
+                }.showingAs { "($name) " }
+            }
+    }
 
     override val name: String = fieldDefinition.name
 }

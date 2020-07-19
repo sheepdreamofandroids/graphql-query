@@ -9,12 +9,18 @@ import graphql.schema.GraphQLOutputType
 import graphql.schema.GraphQLTypeReference
 import kotlin.reflect.KClass
 
-/** Represents a function for one particular type in the schema.*/
+/** Represents a set of operators for the combination of a context type and a result type in the schema.
+ *
+ * For example for the context "Int" and result boolean there would be a SchemaFunction with operators like
+ * "eq: Int", "gt: Int", "isNull: boolean".
+ *
+ * Each SchemaFunction corresponds to an input type with one field for each operator.
+ */
 class SchemaFunction<R : Any>(
     /** The context in which this function will operate, i.e. the type of data in the result to be transformed.*/
     val contextQlType: GraphQLOutputType,
     /** The result of this operator when executing, for example Boolean when in a filter.
-     * But it could be something other, like an Integer for an add operator.*/
+     * But it could be something other, like an Integer for an addition.*/
     resultClass: KClass<R>,
     /** All available operators in the system.*/
     ops: OperatorRegistry,
@@ -60,8 +66,8 @@ class SchemaFunction<R : Any>(
             (value as? ObjectValue)?.objectFields
                 ?.mapNotNull { dataField ->
                     trace({ "${dataField.name} -> ${this.javaClass.simpleName} .compile" }) {
-                            operators[dataField.name]?. compile?.let { it(dataField.value, this@SchemaFunction, context) }
-                        }
+                        operators[dataField.name]?.let { it.compile(dataField.value, this@SchemaFunction, context) }
+                    }
                 }
                 ?.let { effectiveOps ->
                     when (effectiveOps.size) {

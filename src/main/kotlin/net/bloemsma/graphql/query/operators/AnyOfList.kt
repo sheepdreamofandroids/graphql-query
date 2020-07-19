@@ -55,7 +55,7 @@ class ListOp<R : Any, O : Any>(
     override val name: String,
     val requiredResultType: KClass<R>,
     val outputType: KClass<O>,
-    body: (QueryFunction<O>) -> (Result?, Variables) -> O
+    private val body: (QueryFunction<O>) -> (Result?, Variables) -> O
 ) : Operator<O> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
         resultType.isSubclassOf(requiredResultType) && contextType.toTest() != null
@@ -72,12 +72,15 @@ class ListOp<R : Any, O : Any>(
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<O>, context: GraphQLOutputType) -> QueryFunction<O>? =
-        { param: Query, schemaFunction: SchemaFunction<O>, context: GraphQLOutputType ->
-            val fn: QueryFunction<O> = schemaFunction.functionFor(context.toTest()!!, outputType)
-                .compile(name, param, context);
-            body(fn)
-        }
+    override fun compile(
+        param: Query,
+        schemaFunction: SchemaFunction<O>,
+        context: GraphQLOutputType
+    ): QueryFunction<O>? {
+        val fn: QueryFunction<O> = schemaFunction.functionFor(context.toTest()!!, outputType)
+            .compile(name, param, context);
+        return body(fn)
+    }
 
 }
 

@@ -8,7 +8,7 @@ typealias Result = Any
 /** The query is represented as a tree of Value */
 typealias Query = Value<*>
 
-/** A function at query time */
+/** A function that is executed at query time */
 typealias QueryFunction<R> = (Result?, Variables) -> R
 typealias QueryPredicate = QueryFunction<Boolean>
 // modifying the query result is destructive

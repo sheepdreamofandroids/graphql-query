@@ -85,12 +85,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.kotest</groupId>
-            <artifactId>kotest-assertions-core-jvm</artifactId>
-            <version>${kotest.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>io.ktor</groupId>
             <artifactId>ktor-server-cio</artifactId>
             <version>${ktor.version}</version>

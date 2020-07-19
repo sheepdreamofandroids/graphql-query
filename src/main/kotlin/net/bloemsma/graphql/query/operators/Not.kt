@@ -23,11 +23,11 @@ class Not : Operator<Boolean> {
         }
     }
 
-    override val compile: (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) -> QueryFunction<Boolean>? = { param: Query, schemaFunction: SchemaFunction<Boolean>, _ ->
+    override fun compile (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) : QueryFunction<Boolean>? {
         val innerPred =
             schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class)
                 .compile(null, param, schemaFunction.contextQlType)
-        ;{ r: Result?, v: Variables -> !innerPred(r, v) }
+        return { r: Result?, v: Variables -> !innerPred(r, v) }
     }
 
 }

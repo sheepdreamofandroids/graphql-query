@@ -9,11 +9,11 @@ import java.math.BigInteger
 import kotlin.reflect.KClass
 
 
-inline fun <reified T : Result> resultTo(): (Result?) -> T? {
-    return resultTo(T::class)
+inline fun <reified T : Result> converterTo(): (Result?) -> T? {
+    return converterTo(T::class)
 }
 
-fun <T : Result> resultTo(kClass: KClass<*>): (Result?) -> T? {
+fun <T : Result> converterTo(kClass: KClass<*>): (Result?) -> T? {
     return when (kClass) {
         Boolean::class -> Result?::asBoolean
         Int::class -> Result?::asInt
@@ -21,6 +21,7 @@ fun <T : Result> resultTo(kClass: KClass<*>): (Result?) -> T? {
         Double::class -> Result?::asDouble
         String::class -> Result?::asString
         Byte::class -> Result?::asByte
+        Any::class -> Result?::asAny
         else -> throw Exception("Cannot convert to $kClass")
     } as (Result?) -> T?
 }
@@ -64,3 +65,4 @@ fun Result?.asString(): String? = when (this) {
     is StringValue -> value
     else -> toString()
 }
+fun Result?.asAny(): Any? = this
