@@ -12,18 +12,18 @@ class Not : Operator<Boolean> {
         resultType == Boolean::class
 
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
         into.field {
             it.name("not")
             it.description("Negates it's argument.")
-            it.type(function(from, Boolean::class).reference())
+            it.type(function(contextType, Boolean::class).reference())
         }
     }
 
-    override fun compile (param: Query, schemaFunction: SchemaFunction<Boolean>, context: GraphQLOutputType) : QueryFunction<Boolean>? {
+    override fun compile (param: Query, schemaFunction: SchemaFunction<Boolean>, contextType: GraphQLOutputType) : QueryFunction<Boolean>? {
         val innerPred =
             schemaFunction.functionFor(schemaFunction.contextQlType, Boolean::class)
                 .compile(null, param, schemaFunction.contextQlType)

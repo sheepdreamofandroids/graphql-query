@@ -15,33 +15,33 @@ import net.bloemsma.graphql.query.testableType
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
-class AnyOfList : OperatorProducer {
+class ListOperators : OperatorProducer {
     override fun <R : Any> produce(
         resultType: KClass<R>,
         contextType: GraphQLOutputType,
         operatorRegistry: OperatorRegistry
     ): Iterable<Operator<R>> = if (!contextType.canProduce()) listOf() else mutableListOf<Operator<R>>().apply {
         if (resultType == Boolean::class) {
-            add(ListOp("_ANY", Boolean::class, Boolean::class) { predicate ->
+            add(ListOp("any", Boolean::class, Boolean::class) { predicate ->
                 { r: Result?, v: Variables ->
                     (r as Iterable<Result?>).any { predicate(it, v) }
                 }
             } as Operator<R>)
-            add(ListOp("_ALL", Boolean::class, Boolean::class) { predicate ->
+            add(ListOp("all", Boolean::class, Boolean::class) { predicate ->
                 { r: Result?, v: Variables ->
                     (r as Iterable<Result?>).all { predicate(it, v) }
                 }
             } as Operator<R>)
         }
         if (resultType == Number::class) {
-            add(ListOp("_SUM", Double::class, Double::class) { fn ->
+            add(ListOp("sum", Double::class, Double::class) { fn ->
                 { r: Result?, v: Variables ->
                     (r as Iterable<Result?>).sumByDouble { fn(it, v) }
                 }
             } as Operator<R>)
         }
         if (resultType == Int::class) {
-            add(ListOp("_SIZE", Any::class, Int::class) { fn ->
+            add(ListOp("size", Any::class, Int::class) { fn ->
                 { r: Result?, v: Variables ->
                     (r as Iterable<Result?>).count()
                 }
@@ -61,12 +61,12 @@ class ListOp<R : Any, O : Any>(
         resultType.isSubclassOf(requiredResultType) && contextType.toTest() != null
 
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         query: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
         query.field {
-            (from as GraphQLList).wrappedType.testableType()?.run {
+            (contextType as GraphQLList).wrappedType.testableType()?.run {
                 it.name(name).type(function(this, outputType).reference())
             }
         }
@@ -75,10 +75,10 @@ class ListOp<R : Any, O : Any>(
     override fun compile(
         param: Query,
         schemaFunction: SchemaFunction<O>,
-        context: GraphQLOutputType
+        contextType: GraphQLOutputType
     ): QueryFunction<O>? {
-        val fn: QueryFunction<O> = schemaFunction.functionFor(context.toTest()!!, outputType)
-            .compile(name, param, context);
+        val fn: QueryFunction<O> = schemaFunction.functionFor(contextType.toTest()!!, outputType)
+            .compile(name, param, contextType);
         return body(fn)
     }
 

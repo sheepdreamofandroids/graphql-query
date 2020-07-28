@@ -13,7 +13,7 @@ inline fun <reified T : Result> converterTo(): (Result?) -> T? {
     return converterTo(T::class)
 }
 
-fun <T : Result> converterTo(kClass: KClass<*>): (Result?) -> T? {
+fun <T : Result> converterTo(kClass: KClass<T>): (Result?) -> T? {
     return when (kClass) {
         Boolean::class -> Result?::asBoolean
         Int::class -> Result?::asInt

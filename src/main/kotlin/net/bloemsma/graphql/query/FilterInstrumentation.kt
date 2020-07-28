@@ -8,10 +8,12 @@ import graphql.Scalars.GraphQLString
 import graphql.execution.instrumentation.DocumentAndVariables
 import graphql.execution.instrumentation.SimpleInstrumentation
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters
+import graphql.language.Argument
 import graphql.language.Document
 import graphql.language.Field
 import graphql.language.OperationDefinition
 import graphql.schema.GraphQLList
+import graphql.schema.GraphQLNonNull
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
 import graphql.schema.GraphQLSchema
@@ -81,8 +83,8 @@ class FilterInstrumentation(
                     ?.type
                     ?.let { type ->
                         modifierFor(field, type)?.let { mod ->
-                            { r: Result, v: Variables ->
-                                r.getField(field.name)?.let { mod(it, v) }
+                            { r: Result?, v: Variables ->
+                                r?.getField(field.name)?.let { mod(it, v) }
                             } as ResultModifier
                         }
                     }
@@ -90,41 +92,66 @@ class FilterInstrumentation(
 
     private fun modifierFor(field: Field, type: GraphQLOutputType): ResultModifier? {
         return when (type) {
-            is GraphQLList ->
-                field.arguments.firstOrNull { it.name == filterName }?.let {
+            is GraphQLList -> {
+                val innerModifier = modifierFor(field, type.wrappedType as GraphQLOutputType)
+                field.arguments.firstOrNull { it.name == filterName }?.let { argument: Argument ->
                     val contextType = type.wrappedType as GraphQLOutputType
                     addQueryToSchema
                         .functionFor(contextType, Boolean::class)
-                        .compile(null, it.value, contextType)
+                        .compile(null, argument.value, contextType)
                         .logln { "Filtering ${field.name} on $it" }
                 }?.let { pred: QueryPredicate ->
-                    val modifier: ResultModifier = { context: Result?, variables: Variables ->
+                    { context: Result?, variables: Variables ->
                         (context as? MutableIterable<Result>)
                             ?.let {
                                 val iterator = it.iterator()
-                                while (iterator.hasNext())
-                                    if (!pred(iterator.next(), variables))
+                                while (iterator.hasNext()) {
+                                    val next = iterator.next()
+                                    if (!pred(next, variables))
                                         iterator.remove()
-                            }
-                    }
-                    modifier
-                }
-
-            is GraphQLObjectType -> field.selectionSet.getSelectionsOfType(Field::class.java)
-                .mapNotNull { sel -> modifierFor(sel, type.getFieldDefinition(sel.name).type)?.let { sel.name to it } }
-                .let { fieldModifiers: List<Pair<String, ResultModifier>> ->
-                    when {
-                        fieldModifiers.isEmpty() -> null
-                        else -> {
-                            val modifier: ResultModifier = { context: Result?, variables: Variables ->
-                                for ((name, modifier) in fieldModifiers) {
-                                    modifier(context?.getField(name), variables)
+                                    else
+                                        innerModifier?.invoke(next, variables)
                                 }
                             }
-                            modifier
+                        Unit
+                    }.showingAs { "Modifier on field ${field.name} with predicate $pred." }
+                } ?: innerModifier?.let {
+                    { context: Result?, variables: Variables ->
+                        (context as? MutableIterable<Result>)
+                            ?.let {
+                                val iterator = it.iterator()
+                                while (iterator.hasNext()) {
+                                    val next = iterator.next()
+                                    innerModifier.invoke(next, variables)
+                                }
+                            }
+                        Unit
+                    }.showingAs { "Modifier on field ${field.name} passing on to $innerModifier." }
+                }
+            }
+
+            is GraphQLObjectType ->
+                field.selectionSet.getSelectionsOfType(Field::class.java)
+                    .mapNotNull { innerField: Field ->
+                        modifierFor(
+                            innerField,
+                            type.getFieldDefinition(innerField.name).type
+                        )?.let { innerField.name to it }
+                    }
+                    .let { fieldModifiers: List<Pair<String, ResultModifier>> ->
+                        when {
+                            fieldModifiers.isEmpty() -> null
+                            else -> {
+                                val modifier: ResultModifier = { context: Result?, variables: Variables ->
+                                    for ((name, modifier) in fieldModifiers) {
+                                        modifier(context?.getField(name), variables)
+                                    }
+                                }.showingAs { "Modifying fields: " + fieldModifiers.joinToString { "\n${it.first}: ${it.second}" } }
+                                modifier
+                            }
                         }
                     }
-                }
+            is GraphQLNonNull -> modifierFor(field, type.wrappedType as GraphQLOutputType)
             else -> null
         }
     }

@@ -10,7 +10,7 @@ import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
 import graphql.schema.GraphQLScalarType
 import net.bloemsma.graphql.query.operators.AndOfFields
-import net.bloemsma.graphql.query.operators.AnyOfList
+import net.bloemsma.graphql.query.operators.ListOperators
 import net.bloemsma.graphql.query.operators.Not
 import net.bloemsma.graphql.query.operators.Nullability
 import kotlin.reflect.KClass
@@ -46,20 +46,21 @@ interface OperatorProducer {
 interface Operator<R : Any> : OperatorProducer {
     val name: String
     fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean
-    override fun <R2 : Any> produce(
-        resultType: KClass<R2>,
+    @Suppress("UNCHECKED_CAST") // there is a check on resultType
+    override fun <R : Any> produce(
+        resultType: KClass<R>,
         contextType: GraphQLOutputType,
         operatorRegistry: OperatorRegistry
-    ): Iterable<Operator<R2>> =
-        if (canProduce(resultType, contextType)) listOf(this as Operator<R2>) else emptyList()
+    ): Iterable<Operator<R>> =
+        if (canProduce(resultType, contextType)) listOf(this as Operator<R>) else emptyList()
 
     fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     )
 
-    fun compile(param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType): QueryFunction<R>?
+    fun compile(param: Query, schemaFunction: SchemaFunction<R>, contextType: GraphQLOutputType): QueryFunction<R>?
 
 }
 
@@ -69,7 +70,7 @@ abstract class SuperSimpleOperator<R : Any>(
     private val description: String? = null
 ) : Operator<R> {
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
@@ -92,7 +93,7 @@ abstract class SimpleOperator<R : Any>(
     }
 
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
@@ -170,7 +171,7 @@ class ScalarOperator<C : Any, P : Any, R : Any>(
     override fun compile(
         param: Query,
         schemaFunction: SchemaFunction<R>,
-        context: GraphQLOutputType
+        contextType: GraphQLOutputType
     ): QueryFunction<R>? =
         { c: Result?, v: Variables ->
             body(
@@ -201,6 +202,7 @@ val builtins: Map<KClass<*>, GraphQLScalarType> = mapOf(
 )
 
 val comparisons: List<SimpleOperator<Boolean>> = builtins.flatMap { (kClass, _) ->
+    @Suppress("UNCHECKED_CAST") // statically know, will fail on test if wrong
     (kClass as KClass<Comparable<Comparable<*>>>).run {
         listOf(
             (this as KClass<Any>).binarySymmetricOperator("eq") { a, b -> a == b },
@@ -225,7 +227,7 @@ val defaultOperators = OperatorRegistry(
             + Not()
             + AndOfFields()
             + Nullability()
-            + AnyOfList()
+            + ListOperators()
 
 )
 

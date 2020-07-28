@@ -33,7 +33,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
     val functions: MutableMap<String, Lazy<SchemaFunction<*>>> = mutableMapOf()
     fun <R : Any> functionFor(contextType: GraphQLOutputType, resultClass: KClass<R>): SchemaFunction<R> {
         //TODO key must contain result type
-        return functions.computeIfAbsent(contextType.makeName()) {
+        val schemaFunction: SchemaFunction<*> = functions.computeIfAbsent(contextType.makeName()) {
             lazy {
                 SchemaFunction(
                     contextType,
@@ -42,7 +42,9 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                     { a: GraphQLOutputType, b: KClass<*> -> functionFor(a, b) }
                 )
             }
-        }.value as SchemaFunction<R>
+        }.value
+        @Suppress("UNCHECKED_CAST") // it was filtered on resultClass
+        return schemaFunction as SchemaFunction<R>
     }
 
     fun transform(schema: GraphQLSchema) = object : SchemaChanger(schema) {
@@ -79,14 +81,14 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
 
 fun GraphQLType.makeName(): String = when (this) {
     is GraphQLNamedType -> name
-    is GraphQLList -> "_List_of_${wrappedType.makeName()}"
-    is GraphQLNonNull -> "_NonNull_of_${wrappedType.makeName()}"
+    is GraphQLList -> "List_of_${wrappedType.makeName()}"
+    is GraphQLNonNull -> "NonNull_of_${wrappedType.makeName()}"
     else -> "Cannot make name for $this"
 }
 
 
 fun GraphQLType.testableType(): GraphQLOutputType? = when (this) {
-    is GraphQLNonNull -> wrappedType.testableType()
+    is GraphQLNonNull -> this
     is GraphQLList -> this
     is GraphQLObjectType -> this
     is GraphQLEnumType -> this

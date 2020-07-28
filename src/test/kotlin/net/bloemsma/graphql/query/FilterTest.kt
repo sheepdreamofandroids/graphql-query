@@ -58,7 +58,7 @@ class FilterTest {
     @Test
     fun `list of nonnull can be tested`() = """
          {
-          result(count: 6, _filter:{nonNullStringArray:{_ANY:{lt:"3"}}}) {
+          result(count: 6, _filter:{nonNullStringArray:{any:{lt:"3"}}}) {
             int
             nonNullStringArray(count:3)
           }

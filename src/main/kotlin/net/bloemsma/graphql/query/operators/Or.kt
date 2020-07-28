@@ -15,19 +15,19 @@ class OrOfFields : Operator<Boolean> {
         resultType == Boolean::class && contextType is GraphQLObjectType
 
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         query: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
         query.field {
-            it.name("_OR").type(GraphQLList(function(from, Boolean::class).reference()))
+            it.name("or").type(GraphQLList(function(contextType, Boolean::class).reference()))
         }
     }
 
     override fun compile(
         param: Query,
         schemaFunction: SchemaFunction<Boolean>,
-        context: GraphQLOutputType
+        contextType: GraphQLOutputType
     ): QueryFunction<Boolean>? =
         TODO("Not yet implemented")
 

@@ -44,12 +44,12 @@ class ObjectFieldOp<R : Any>(
         contextType == graphQLObjectType
 
     override fun makeField(
-        from: GraphQLOutputType,
+        contextType: GraphQLOutputType,
         into: GraphQLInputObjectType.Builder,
         function: (data: GraphQLOutputType, kClass: KClass<*>) -> SchemaFunction<*>
     ) {
         into.description("This is true when all fields are true (AND).")
-        (from as GraphQLObjectType).fieldDefinitions.forEach { field ->
+        (contextType as GraphQLObjectType).fieldDefinitions.forEach { field ->
             into.field {
                 it.name(field.name)
                 it.type(function(field.type, Boolean::class).reference())
@@ -58,7 +58,7 @@ class ObjectFieldOp<R : Any>(
         }
     }
 
-    override fun compile(param: Query, schemaFunction: SchemaFunction<R>, context: GraphQLOutputType): QueryFunction<R>?
+    override fun compile(param: Query, schemaFunction: SchemaFunction<R>, contextType: GraphQLOutputType): QueryFunction<R>?
     {
         val context = graphQLObjectType.getFieldDefinition(name).type
         return schemaFunction
