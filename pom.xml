@@ -16,7 +16,7 @@
         <url>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</url>
         <developerConnection>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</developerConnection>
         <connection>scm:git:https://github.com/sheepdreamofandroids/graphql-query.git</connection>
-        <tag>HEAD</tag>
+        <tag>graphql-query-0.0.1-PRE-2</tag>
     </scm>
 
     <developers>
