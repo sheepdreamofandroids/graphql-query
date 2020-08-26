@@ -1,6 +1,5 @@
 package net.bloemsma.graphql.query.operators
 
-import graphql.schema.GraphQLFieldDefinition
 import graphql.schema.GraphQLInputObjectType
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
@@ -27,8 +26,8 @@ class AndOfFields : OperatorProducer {
             contextType.fieldDefinitions.map {
                 ObjectFieldOp(
                     contextType,
-                    it,
-                    resultType
+                    resultType,
+                    it.name
                 )
             }
         else
@@ -37,8 +36,8 @@ class AndOfFields : OperatorProducer {
 
 class ObjectFieldOp<R : Any>(
     private val graphQLObjectType: GraphQLObjectType,
-    fieldDefinition: GraphQLFieldDefinition,
-    private val resultType: KClass<R>
+    private val resultType: KClass<R>,
+    override val name: String
 ) : Operator<R> {
     override fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType) =
         contextType == graphQLObjectType
@@ -71,5 +70,4 @@ class ObjectFieldOp<R : Any>(
             }
     }
 
-    override val name: String = fieldDefinition.name
 }

@@ -36,7 +36,7 @@ abstract class SchemaChanger(val schema: GraphQLSchema) {
     }
 
     open fun change() = newSchema(schema).change().build()
-        .logln { SchemaPrinter(SchemaPrinter.Options.defaultOptions()).print(it) }
+        .logDebug { SchemaPrinter(SchemaPrinter.Options.defaultOptions()).print(it) }
 
     open fun GraphQLSchema.Builder.change(): GraphQLSchema.Builder = apply {
         clearAdditionalTypes()

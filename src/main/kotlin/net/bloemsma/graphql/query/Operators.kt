@@ -13,6 +13,7 @@ import net.bloemsma.graphql.query.operators.AndOfFields
 import net.bloemsma.graphql.query.operators.ListOperators
 import net.bloemsma.graphql.query.operators.Not
 import net.bloemsma.graphql.query.operators.Nullability
+import net.bloemsma.graphql.query.operators.Or
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
@@ -46,6 +47,7 @@ interface OperatorProducer {
 interface Operator<R : Any> : OperatorProducer {
     val name: String
     fun canProduce(resultType: KClass<*>, contextType: GraphQLOutputType): Boolean
+
     @Suppress("UNCHECKED_CAST") // there is a check on resultType
     override fun <R : Any> produce(
         resultType: KClass<R>,
@@ -228,6 +230,7 @@ val defaultOperators = OperatorRegistry(
             + AndOfFields()
             + Nullability()
             + ListOperators()
+            + Or()
 
 )
 
