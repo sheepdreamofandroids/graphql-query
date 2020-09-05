@@ -99,7 +99,7 @@ class FilterInstrumentation(
                     addQueryToSchema
                         .functionFor(contextType, Boolean::class)
                         .compile(null, argument.value, contextType)
-                        .logln { "Filtering ${field.name} on $it" }
+                        .logDebug { "Filtering ${field.name} on $it" }
                 }?.let { pred: QueryPredicate ->
                     { context: Result?, variables: Variables ->
                         (context as? MutableIterable<Result>)
@@ -173,9 +173,9 @@ inline fun <I1, I2, O> ((I1, I2) -> O).showingAs(crossinline body: ((I1, I2) -> 
     if (debug == false) this else let {
         object : ((I1, I2) -> O) {
             override fun invoke(i1: I1, i2: I2): O {
-                logln { "executing $this($i1, $i2)" }
+                logDebug { "executing $this($i1, $i2)" }
                 val r = it(i1, i2)
-                logln { "executing $this -> $r" }
+                logDebug { "executing $this -> $r" }
                 return r
             }
 

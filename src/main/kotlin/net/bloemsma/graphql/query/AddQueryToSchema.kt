@@ -10,13 +10,7 @@ import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLOutputType
 import graphql.schema.GraphQLScalarType
 import graphql.schema.GraphQLSchema
-import graphql.schema.GraphQLSchemaElement
 import graphql.schema.GraphQLType
-import graphql.schema.GraphQLTypeVisitorStub
-import graphql.schema.SchemaTransformer
-import graphql.util.TraversalControl
-import graphql.util.TraverserContext
-import graphql.util.TreeTransformerUtil
 import kotlin.reflect.KClass
 
 // Some terminology:
@@ -58,7 +52,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                             arg.name("_filter")
                             arg.type(schemaFunction.reference())
                         }
-                        logln { "Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction." }
+                        logDebug { "Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction." }
 //                        additionalTypes.add(schemaFunction.parmQlType)
                     }
                 }

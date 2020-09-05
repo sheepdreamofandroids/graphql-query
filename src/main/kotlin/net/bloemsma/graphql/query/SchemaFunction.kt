@@ -22,7 +22,7 @@ class SchemaFunction<R : Any>(
     /** The result of this operator when executing, for example Boolean when in a filter.
      * But it could be something other, like an Integer for an addition.*/
     resultClass: KClass<R>,
-    /** All available operators in the system.*/
+    /** All available operators in the graphql schema.*/
     ops: OperatorRegistry,
     /** Something that can resolve nested operators. */
     //TODO just make it a function and subtype, so it can be generified
@@ -43,19 +43,9 @@ class SchemaFunction<R : Any>(
 
     }
 
-    val ref = GraphQLTypeReference.typeRef(signatureName)
+    val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
 
-    private var wasReferenced = false
-    fun reference() = ref
-    fun referenc2e() = if (wasReferenced) {
-        // all subsequent references including recursive use a named reference
-        logln { "typeref to $signatureName" }
-        GraphQLTypeReference.typeRef(signatureName)
-    } else { // only the very first reference uses the actual type so it is referenced exactly once
-        logln { "acutally using $signatureName" }
-        wasReferenced = true
-        parmQlType
-    }
+    fun reference(): GraphQLTypeReference = ref
 
     override fun toString(): String {
         return "SchemaFunction $signatureName with ops (${operators.keys})"
@@ -91,7 +81,7 @@ class SchemaFunction<R : Any>(
         }
 
     fun <T : Any> functionFor(type: GraphQLOutputType, kClass: KClass<T>): SchemaFunction<T> =
-        function(type, kClass).logln { "Got $this" } as SchemaFunction<T>
+        function(type, kClass).logDebug { "Got $this" } as SchemaFunction<T>
 }
 
 private fun GraphQLOutputType.objectField(name: String): GraphQLFieldDefinition? =
