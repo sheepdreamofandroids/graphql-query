@@ -34,6 +34,7 @@ fun server(testSchema: TestSchema = TestSchema()) = embeddedServer(CIO, 8080) {
                 path = "index.html",
                 resourcePackage = "static"
             )?.let { call.respond(it) }
+                ?: call.respond(HttpStatusCode.NotFound, "Oops, where did my homepage go?")
         }
         post("/graphql") {
             try {

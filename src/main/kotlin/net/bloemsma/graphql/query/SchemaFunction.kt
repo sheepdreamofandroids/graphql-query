@@ -32,18 +32,22 @@ class SchemaFunction<R : Any>(
 
     private val operators: Map<String, Operator<R>> =
         ops.applicableTo(resultClass, contextQlType).associateBy { it.name }
-    val parmQlType: GraphQLInputType by lazy {
+    val parmQlType: GraphQLInputType? by lazy {
         // lazy to avoid infinite recursion
-        GraphQLInputObjectType.newInputObject().apply {
+        if (hasOperators()) GraphQLInputObjectType.newInputObject().apply {
             name(signatureName)
             for (it in operators.values) {
                 it.makeField(contextQlType, this, function)
             }
         }.build()
+        else
+            null
 
     }
 
-    val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
+    fun hasOperators(): Boolean = !operators.isEmpty()
+
+    private val ref: GraphQLTypeReference = GraphQLTypeReference.typeRef(signatureName)
 
     fun reference(): GraphQLTypeReference = ref
 

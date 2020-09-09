@@ -73,4 +73,3 @@ class FilterTest {
     }
 }
 
-object testSchema : TestSchema()

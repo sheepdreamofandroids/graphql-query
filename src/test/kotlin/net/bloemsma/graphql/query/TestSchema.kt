@@ -114,3 +114,5 @@ open class TestSchema(
         .build()
 
 }
+
+object testSchema : TestSchema()

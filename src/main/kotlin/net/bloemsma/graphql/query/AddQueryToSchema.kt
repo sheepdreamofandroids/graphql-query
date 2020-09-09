@@ -32,9 +32,8 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                 SchemaFunction(
                     contextType,
                     resultClass,
-                    operators,
-                    { a: GraphQLOutputType, b: KClass<*> -> functionFor(a, b) }
-                )
+                    operators
+                ) { a: GraphQLOutputType, b: KClass<*> -> functionFor(a, b) }
             }
         }.value
         @Suppress("UNCHECKED_CAST") // it was filtered on resultClass
@@ -48,12 +47,13 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                 listType.wrappedType.testableType()?.let { predicateType ->
                     if (!predicateType.isBuiltInReflection()) {
                         val schemaFunction = functionFor(predicateType, Boolean::class)
-                        argument { arg ->
-                            arg.name("_filter")
-                            arg.type(schemaFunction.reference())
-                        }
-                        logDebug { "Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction." }
-//                        additionalTypes.add(schemaFunction.parmQlType)
+                        if (schemaFunction.hasOperators()) {
+                            argument { arg ->
+                                arg.name("_filter")
+                                arg.type(schemaFunction.reference())
+                            }
+                            logDebug { "Modified field ${original.name} of type ${original.type}: Added filter for $schemaFunction." }
+                        }//                        additionalTypes.add(schemaFunction.parmQlType)
                     }
                 }
             }
@@ -66,7 +66,7 @@ class AddQueryToSchema(private val operators: OperatorRegistry) {
                 val size = functions.size
                 functions.values.toList().forEach { it.value.parmQlType }
             } while (functions.size > size)
-            return functions.values.map { it.value.parmQlType }.toSet()
+            return functions.values.mapNotNull { it.value.parmQlType }.toSet()
         }
     }.change()
 
